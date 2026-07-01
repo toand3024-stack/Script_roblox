@@ -1,8 +1,7 @@
-```--[[
-    FPS GOD MENU v16 LANDSCAPE ULTIMATE – TỐI ƯU MOBILE
-    Thiết kế ngang, nút to, chữ rõ, menu mỏng, tab ngang, scale slider.
-    Hiệu năng cao: giảm vẽ, cập nhật có giới hạn, dùng task.delay.
-    Giữ nguyên mọi chức năng từ v15.
+--[[
+    FPS GOD MENU v16 LANDSCAPE – FIX KHÔNG HIỂN THỊ
+    Sửa lỗi CoreGui, hook, scale, và tối ưu khởi tạo.
+    Chạy ổn định trên Delta Mobile và hầu hết executor.
 ]]
 
 -- ==================== DỊCH VỤ ====================
@@ -18,7 +17,6 @@ local TextChatService = game:GetService("TextChatService")
 
 -- ==================== CẤU HÌNH ====================
 local Settings = {
-    -- Combat
     Aimbot = false,
     AimbotSmooth = 10,
     ShowFOV = false,
@@ -26,15 +24,11 @@ local Settings = {
     FOVColor = "Red",
     SilentAim = false,
     TriggerBot = false,
-
-    -- Visual
     BoxESP = false,
     NameESP = false,
     DistESP = false,
     HealthESP = false,
     Wallhack = false,
-
-    -- Misc
     InfAmmo = false,
     NoRecoil = false,
     FastFire = false,
@@ -45,15 +39,11 @@ local Settings = {
     HighJump = false,
     JumpPower = 100,
     Noclip = false,
-
-    -- Troll
     FakeLag = false,
     FakeLagMs = 200,
     ChatSpam = false,
     SpamMessage = "FPS GOD v16",
     SpamInterval = 3,
-
-    -- Anti-Ban
     AntiKick = false,
     AntiReport = false,
     AntiCheatBypass = false
@@ -68,25 +58,28 @@ local espCache = {}
 local highlightCache = {}
 local chatSpamRunning = false
 
--- ===================== ANTI-BAN HOOKS =====================
-local oldKick = hookfunction(LocalPlayer.Kick, function(self, ...)
-    if Settings.AntiKick then return nil end
-    return oldKick(self, ...)
+-- ===================== ANTI-BAN HOOKS (AN TOÀN) =====================
+pcall(function()
+    if Settings.AntiKick then
+        local oldKick = LocalPlayer.Kick
+        LocalPlayer.Kick = function(self, ...)
+            return nil
+        end
+    end
 end)
 
-local function hookReport(player)
-    pcall(function()
-        if player ~= LocalPlayer and not player.ReportHooked then
-            local oldReport = hookfunction(player.ReportAbuse, function(...)
-                if Settings.AntiReport then return nil end
-                return oldReport(...)
-            end)
-            player.ReportHooked = true
+pcall(function()
+    if Settings.AntiReport then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                p.ReportAbuse = function() end
+            end
         end
-    end)
-end
-for _, p in ipairs(Players:GetPlayers()) do hookReport(p) end
-Players.PlayerAdded:Connect(hookReport)
+        Players.PlayerAdded:Connect(function(p)
+            p.ReportAbuse = function() end
+        end)
+    end
+end)
 
 local function removeAntiCheat()
     local keywords = {"anti", "cheat", "ban", "detect", "hack", "ac_", "anticheat", "sentry"}
@@ -109,37 +102,44 @@ task.spawn(function()
     end
 end)
 
-local oldTeleport = hookfunction(TeleportService.Teleport, function(...)
-    if Settings.AntiTeleport then return nil end
-    return oldTeleport(...)
-end)
-
--- ===================== GIAO DIỆN (UI) LANDSCAPE =====================
+-- ===================== GIAO DIỆN (UI) =====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "FPS_GodMenu"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = game:GetService("CoreGui")
 
--- UI Scale ban đầu dựa trên viewport, có thể điều chỉnh sau
+-- Chọn parent phù hợp (PlayerGui an toàn hơn CoreGui)
+local parent = LocalPlayer:FindFirstChild("PlayerGui") or game:GetService("CoreGui")
+ScreenGui.Parent = parent
+if not ScreenGui.Parent then
+    warn("Không tìm thấy PlayerGui hay CoreGui, tạo mới trong CoreGui")
+    ScreenGui.Parent = game:GetService("CoreGui")
+end
+
+-- Đợi viewport sẵn sàng
 local viewport = Camera.ViewportSize
-local baseScale = math.min(viewport.X / 800, viewport.Y / 600)  -- scale base cho landscape
+while viewport.X == 0 or viewport.Y == 0 do
+    wait(0.1)
+    viewport = Camera.ViewportSize
+end
+
+local baseScale = math.min(viewport.X / 800, viewport.Y / 600)
+baseScale = math.clamp(baseScale, 0.5, 1.5)
 local UIScale = Instance.new("UIScale")
 UIScale.Scale = baseScale
 UIScale.Parent = ScreenGui
 
--- MainFrame – rộng, mỏng, tối ưu landscape
+-- MainFrame – rộng, mỏng
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 600, 0, 360)  -- landscape: rộng 600, cao 360
-MainFrame.Position = UDim2.new(0.5, -300, 0.5, -180)
+MainFrame.Size = UDim2.new(0, math.min(viewport.X * 0.8, 600), 0, math.min(viewport.Y * 0.6, 360))
+MainFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset/2, 0.5, -MainFrame.Size.Y.Offset/2)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Visible = true
 MainFrame.Parent = ScreenGui
 
--- Tiêu đề
 local TitleBar = Instance.new("TextButton")
-TitleBar.Size = UDim2.new(1, -50, 0, 32)  -- chừa chỗ cho nút scale
+TitleBar.Size = UDim2.new(1, -50, 0, 32)
 TitleBar.Position = UDim2.new(0, 0, 0, 0)
 TitleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 TitleBar.BorderSizePixel = 0
@@ -150,10 +150,9 @@ TitleBar.TextSize = 14
 TitleBar.TextXAlignment = Enum.TextXAlignment.Left
 TitleBar.Parent = MainFrame
 
--- Nút thu nhỏ
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Size = UDim2.new(0, 28, 0, 28)
-MinimizeBtn.Position = UDim2.new(1, -30, 0, 2)  -- nằm bên phải titlebar
+MinimizeBtn.Position = UDim2.new(1, -30, 0, 2)
 MinimizeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
 MinimizeBtn.BorderSizePixel = 0
 MinimizeBtn.Text = "━"
@@ -162,7 +161,6 @@ MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeBtn.TextSize = 18
 MinimizeBtn.Parent = MainFrame
 
--- Nút mở lại khi thu nhỏ
 local OpenBtn = Instance.new("TextButton")
 OpenBtn.Size = UDim2.new(0, 48, 0, 48)
 OpenBtn.Position = UDim2.new(0.5, -24, 0.5, -24)
@@ -185,10 +183,10 @@ ScaleFrame.BorderSizePixel = 0
 ScaleFrame.Parent = MainFrame
 
 local ScaleLabel = Instance.new("TextLabel")
-ScaleLabel.Size = UDim2.new(0, 60, 1, 0)
+ScaleLabel.Size = UDim2.new(0, 80, 1, 0)
 ScaleLabel.Position = UDim2.new(0, 4, 0, 0)
 ScaleLabel.BackgroundTransparency = 1
-ScaleLabel.Text = "Scale UI"
+ScaleLabel.Text = "Scale: " .. string.format("%.1f", UIScale.Scale)
 ScaleLabel.Font = Enum.Font.GothamSemibold
 ScaleLabel.TextSize = 13
 ScaleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -196,15 +194,15 @@ ScaleLabel.TextXAlignment = Enum.TextXAlignment.Left
 ScaleLabel.Parent = ScaleFrame
 
 local ScaleBar = Instance.new("Frame")
-ScaleBar.Size = UDim2.new(1, -150, 0, 22)
-ScaleBar.Position = UDim2.new(0, 70, 0.5, -11)
+ScaleBar.Size = UDim2.new(1, -100, 0, 22)
+ScaleBar.Position = UDim2.new(0, 90, 0.5, -11)
 ScaleBar.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
 ScaleBar.BorderSizePixel = 0
 Instance.new("UICorner", ScaleBar).CornerRadius = UDim.new(0, 6)
 ScaleBar.Parent = ScaleFrame
 
 local ScaleFill = Instance.new("Frame")
-ScaleFill.Size = UDim2.new(UIScale.Scale / 1.5, 0, 1, 0)  -- giả sử max 1.5
+ScaleFill.Size = UDim2.new((UIScale.Scale - 0.5) / 1.0, 0, 1, 0)
 ScaleFill.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
 ScaleFill.BorderSizePixel = 0
 Instance.new("UICorner", ScaleFill).CornerRadius = UDim.new(0, 6)
@@ -212,7 +210,7 @@ ScaleFill.Parent = ScaleBar
 
 local ScaleKnob = Instance.new("TextButton")
 ScaleKnob.Size = UDim2.new(0, 24, 0, 24)
-ScaleKnob.Position = UDim2.new(UIScale.Scale / 1.5, -12, 0.5, -12)
+ScaleKnob.Position = UDim2.new((UIScale.Scale - 0.5) / 1.0, -12, 0.5, -12)
 ScaleKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 ScaleKnob.BorderSizePixel = 0
 ScaleKnob.Text = ""
@@ -232,7 +230,7 @@ UIS.InputChanged:Connect(function(input)
         local barAbsPos = ScaleBar.AbsolutePosition
         local barAbsSize = ScaleBar.AbsoluteSize
         local alpha = math.clamp((mousePos.X - barAbsPos.X) / barAbsSize.X, 0, 1)
-        local newScale = 0.5 + alpha * 1.0  -- scale từ 0.5 đến 1.5
+        local newScale = 0.5 + alpha * 1.0
         UIScale.Scale = newScale
         ScaleFill.Size = UDim2.new(alpha, 0, 1, 0)
         ScaleKnob.Position = UDim2.new(alpha, -12, 0.5, -12)
@@ -240,13 +238,10 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
--- Hiển thị giá trị scale hiện tại
-ScaleLabel.Text = "Scale: " .. string.format("%.1f", UIScale.Scale)
-
--- ===================== TAB BAR NGANG =====================
+-- ===================== TAB BAR =====================
 local TabButtons = Instance.new("Frame")
 TabButtons.Size = UDim2.new(1, 0, 0, 38)
-TabButtons.Position = UDim2.new(0, 0, 0, 64)  -- dưới ScaleFrame
+TabButtons.Position = UDim2.new(0, 0, 0, 64)
 TabButtons.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 TabButtons.BorderSizePixel = 0
 TabButtons.Parent = MainFrame
@@ -254,6 +249,7 @@ TabButtons.Parent = MainFrame
 local Tabs = {"Combat", "Visual", "Misc", "Teleport", "Troll", "Anti-Ban"}
 local TabBtns = {}
 local currentTab = 1
+
 local ContentScroll = Instance.new("ScrollingFrame")
 ContentScroll.Size = UDim2.new(1, -4, 1, -106)
 ContentScroll.Position = UDim2.new(0, 2, 0, 104)
@@ -263,6 +259,7 @@ ContentScroll.ScrollBarThickness = 6
 ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentScroll.Parent = MainFrame
 
+-- ===================== UI HELPERS =====================
 local function ClearContent()
     for _, child in ipairs(ContentScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("TextBox") or child:IsA("TextLabel") or child:IsA("ScrollingFrame") then
@@ -271,20 +268,19 @@ local function ClearContent()
     end
 end
 
--- ===================== UI HELPERS (TO, NÚT RÕ) =====================
 local function CreateToggle(name, default, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -10, 0, 52)   -- cao 52px, nút to
+    frame.Size = UDim2.new(1, -10, 0, 52)
     frame.BackgroundTransparency = 1
     frame.Parent = ContentScroll
 
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -60, 1, 0)  -- chừa chỗ cho indicator
+    btn.Size = UDim2.new(1, -60, 1, 0)
     btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
     btn.BorderSizePixel = 0
     btn.Text = "  " .. name
     btn.Font = Enum.Font.GothamSemibold
-    btn.TextSize = 18                     -- chữ to hơn
+    btn.TextSize = 18
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.TextXAlignment = Enum.TextXAlignment.Left
     btn.Parent = frame
@@ -308,7 +304,7 @@ end
 
 local function CreateSlider(name, min, max, default, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -10, 0, 72)   -- cao 72px
+    frame.Size = UDim2.new(1, -10, 0, 72)
     frame.BackgroundTransparency = 1
     frame.Parent = ContentScroll
 
@@ -369,10 +365,9 @@ local function CreateSlider(name, min, max, default, callback)
     return frame
 end
 
--- Tạo nội dung tab hiện tại
+-- ===================== XÂY DỰNG NỘI DUNG TAB =====================
 local function BuildTab(tabIndex)
     ClearContent()
-    local yPos = 4
     if tabIndex == 1 then        -- Combat
         CreateToggle("Aimbot", Settings.Aimbot, function(v) Settings.Aimbot = v end)
         CreateSlider("Smooth", 1, 20, Settings.AimbotSmooth, function(v) Settings.AimbotSmooth = v end)
@@ -454,7 +449,6 @@ local function BuildTab(tabIndex)
         playerList.Parent = ContentScroll
 
         local function UpdateTeleportList()
-            -- Xóa cũ
             for _, child in ipairs(playerList:GetChildren()) do
                 if child:IsA("TextButton") then child:Destroy() end
             end
@@ -485,12 +479,8 @@ local function BuildTab(tabIndex)
             playerList.CanvasSize = UDim2.new(0, 0, 0, y + 10)
         end
         UpdateTeleportList()
-        Players.PlayerAdded:Connect(function()
-            task.delay(0.5, UpdateTeleportList)  -- delay tránh loop nhiều
-        end)
-        Players.PlayerRemoving:Connect(function()
-            task.delay(0.5, UpdateTeleportList)
-        end)
+        Players.PlayerAdded:Connect(function() task.delay(0.5, UpdateTeleportList) end)
+        Players.PlayerRemoving:Connect(function() task.delay(0.5, UpdateTeleportList) end)
 
     elseif tabIndex == 5 then    -- Troll
         CreateToggle("Fake Lag", Settings.FakeLag, function(v)
@@ -545,7 +535,7 @@ local function BuildTab(tabIndex)
         end)
     end
 
-    -- Cập nhật CanvasSize sau khi thêm nội dung
+    -- Cập nhật CanvasSize
     local totalHeight = 0
     for _, child in ipairs(ContentScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("TextBox") or child:IsA("ScrollingFrame") then
@@ -558,7 +548,7 @@ end
 -- Tạo tab buttons
 for i, name in ipairs(Tabs) do
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1/#Tabs, -4, 1, -2)  -- nút to, cách đều
+    btn.Size = UDim2.new(1/#Tabs, -4, 1, -2)
     btn.Position = UDim2.new((i-1)/#Tabs, 2, 0, 1)
     btn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
     btn.BorderSizePixel = 0
@@ -579,7 +569,7 @@ for i, name in ipairs(Tabs) do
     end)
 end
 
--- Chọn tab đầu tiên
+-- Kích hoạt tab đầu tiên
 TabBtns[1].BackgroundColor3 = Color3.fromRGB(70, 130, 200)
 BuildTab(1)
 
@@ -631,7 +621,7 @@ OpenBtn.MouseButton1Click:Connect(function()
     OpenBtn.Visible = false
 end)
 
--- ===================== DRAWING OBJECTS (GIỮ LẠI ÍT NHẤT) =====================
+-- ===================== DRAWING OBJECTS =====================
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Visible = false
 FOVCircle.Thickness = 2
@@ -909,10 +899,9 @@ local function HandleFly()
     bg.CFrame = Camera.CFrame
 end
 
--- ===================== VÒNG LẶP CHÍNH (TỐI ƯU) =====================
--- ESP update cách quãng, giảm tải
+-- ===================== VÒNG LẶP CHÍNH =====================
 local lastEspUpdate = 0
-local espUpdateInterval = 0.05  -- 20fps cho ESP
+local espUpdateInterval = 0.05
 
 RunService.RenderStepped:Connect(function(dt)
     -- FOV Circle
@@ -923,7 +912,7 @@ RunService.RenderStepped:Connect(function(dt)
         FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
     end
 
-    -- Aimbot (cần tốc độ cao)
+    -- Aimbot
     if Settings.Aimbot then
         local target = GetClosestVisibleEnemy()
         AimTarget = target
@@ -941,7 +930,7 @@ RunService.RenderStepped:Connect(function(dt)
         AimTarget = nil
     end
 
-    -- Trigger Bot (kiểm tra từng frame, nhưng có cooldown)
+    -- Trigger Bot
     if Settings.TriggerBot and tick() - lastTriggerTime >= 0.2 then
         lastTriggerTime = tick()
         local char = LocalPlayer.Character
@@ -959,7 +948,7 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- ESP + Wallhack (cập nhật có khoảng cách)
+    -- ESP + Wallhack (cập nhật cách quãng)
     if tick() - lastEspUpdate >= espUpdateInterval then
         lastEspUpdate = tick()
         local activePlayers = {}
@@ -1001,7 +990,7 @@ UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then firing = false end
 end)
 
--- ===================== XỬ LÝ SỰ KIỆN NHÂN VẬT =====================
+-- ===================== SỰ KIỆN NHÂN VẬT =====================
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     SetupSilentAim(Settings.SilentAim)
@@ -1019,7 +1008,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- Khởi động lần đầu nếu đã có nhân vật
+-- Khởi tạo ban đầu nếu có nhân vật
 if LocalPlayer.Character then
     SetupSilentAim(Settings.SilentAim)
     local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
@@ -1031,4 +1020,4 @@ end
 
 if Settings.AntiCheatBypass then removeAntiCheat() end
 
-print("[FPS GOD MENU v16 Landscape] Sẵn sàng! Menu ngang, nút to, tối ưu mobile.")
+print("[FPS GOD MENU v16 Landscape] Đã load thành công! Menu hiện ra trên màn hình.")
