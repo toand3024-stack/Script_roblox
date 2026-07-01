@@ -1,8 +1,7 @@
-```lua
 --[[
-    FPS GOD MENU v15 ULTIMATE – ZEROHUB STYLE UI
-    Giữ nguyên toàn bộ chức năng (Aimbot, ESP, Fly, Noclip, Fake Lag, Chat Spam, Anti-Ban, Teleport, ...)
-    Giao diện mới: Sidebar trái, Dark Theme, Switch/Slider hiện đại.
+    FPS GOD MENU v15 ULTIMATE – ZEROHUB STYLE UI (FIXED)
+    Fix lỗi crash do thiếu Drawing API.
+    Menu vẫn lên bình thường, ESP/FOV tự tắt nếu không khả dụng.
 ]]
 
 -- ==================== DỊCH VỤ ====================
@@ -69,6 +68,17 @@ local lastWeaponCheck = 0
 local espCache = {}
 local highlightCache = {}
 local chatSpamRunning = false
+local DrawingSupported = pcall(function() local test = Drawing.new("Circle"); test:Remove() end)  -- Kiểm tra trước
+
+-- Nếu không hỗ trợ Drawing, vô hiệu hoá toàn bộ tính năng vẽ
+if not DrawingSupported then
+    Settings.ShowFOV = false
+    Settings.BoxESP = false
+    Settings.NameESP = false
+    Settings.DistESP = false
+    Settings.HealthESP = false
+    Settings.Wallhack = false
+end
 
 -- ===================== ANTI-BAN HOOKS =====================
 local oldKick = hookfunction(LocalPlayer.Kick, function(self, ...)
@@ -475,7 +485,7 @@ end
 local combatFrame = TabFrames[1]
 CreateSwitch(combatFrame, "Aimbot", false, function(v) Settings.Aimbot = v end)
 CreateSlider(combatFrame, "Smooth", 1, 20, 10, function(v) Settings.AimbotSmooth = v end)
-CreateSwitch(combatFrame, "Show FOV", false, function(v) Settings.ShowFOV = v end)
+CreateSwitch(combatFrame, "Show FOV", false, function(v) Settings.ShowFOV = v and DrawingSupported end)
 CreateSlider(combatFrame, "FOV Size", 10, 800, 100, function(v) Settings.FOVSize = v end)
 
 local fovColorBtn = Instance.new("TextButton")
@@ -491,6 +501,7 @@ fovColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 Instance.new("UICorner", fovColorBtn).CornerRadius = UDim.new(0, 6)
 fovColorBtn.Parent = combatFrame
 fovColorBtn.MouseButton1Click:Connect(function()
+    if not DrawingSupported then return end
     if Settings.FOVColor == "Red" then
         Settings.FOVColor = "Green"
         fovColorBtn.Text = "FOV Color: Green"
@@ -505,12 +516,12 @@ CreateSwitch(combatFrame, "Trigger Bot", false, function(v) Settings.TriggerBot 
 
 -- Visual Tab
 local visualFrame = TabFrames[2]
-CreateSwitch(visualFrame, "Box ESP", false, function(v) Settings.BoxESP = v end)
-CreateSwitch(visualFrame, "Name ESP", false, function(v) Settings.NameESP = v end)
-CreateSwitch(visualFrame, "Distance ESP", false, function(v) Settings.DistESP = v end)
-CreateSwitch(visualFrame, "Health ESP", false, function(v) Settings.HealthESP = v end)
+CreateSwitch(visualFrame, "Box ESP", false, function(v) if DrawingSupported then Settings.BoxESP = v else Settings.BoxESP = false end end)
+CreateSwitch(visualFrame, "Name ESP", false, function(v) if DrawingSupported then Settings.NameESP = v else Settings.NameESP = false end end)
+CreateSwitch(visualFrame, "Distance ESP", false, function(v) if DrawingSupported then Settings.DistESP = v else Settings.DistESP = false end end)
+CreateSwitch(visualFrame, "Health ESP", false, function(v) if DrawingSupported then Settings.HealthESP = v else Settings.HealthESP = false end end)
 CreateSwitch(visualFrame, "Wallhack (Chams)", false, function(v)
-    Settings.Wallhack = v
+    Settings.Wallhack = v and DrawingSupported
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then UpdateHighlight(player) end
     end
@@ -658,10 +669,7 @@ end)
 -- Sắp xếp nội dung các tab
 for _, f in ipairs(TabFrames) do arrange(f) end
 
--- ===================== CHỨC NĂNG (GIỮ NGUYÊN) =====================
--- Các hàm hỗ trợ, hooks, v.v. đã được định nghĩa từ đầu.
--- Chỉ cần bổ sung các hàm đã được gọi trong UI.
-
+-- ===================== CHỨC NĂNG =====================
 local function FindRemote()
     local char = LocalPlayer.Character
     if char then
@@ -813,6 +821,7 @@ local function HandleFly(dt)
 end
 
 local function UpdateHighlight(player)
+    if not DrawingSupported then return end
     local char = player.Character
     local hum = char and char:FindFirstChild("Humanoid")
     if Settings.Wallhack and hum and hum.Health > 0 then
@@ -834,108 +843,39 @@ local function UpdateHighlight(player)
     end
 end
 
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Visible = false
-FOVCircle.Thickness = 2
-FOVCircle.Transparency = 0.8
-FOVCircle.Color = Color3.fromRGB(255, 0, 0)
-FOVCircle.Radius = 100
-FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-FOVCircle.Filled = false
+-- Fake FOV Circle nếu không có Drawing
+local FOVCircle = { Visible = false, Radius = 100, Position = Vector2.new(0,0), Color = Color3.fromRGB(255,0,0) }
+if DrawingSupported then
+    local realFOV = Drawing.new("Circle")
+    realFOV.Visible = false
+    realFOV.Thickness = 2
+    realFOV.Transparency = 0.8
+    realFOV.Color = Color3.fromRGB(255,0,0)
+    realFOV.Radius = 100
+    realFOV.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    realFOV.Filled = false
+    FOVCircle = realFOV
+end
 
 local function createDrawing(type, properties)
+    if not DrawingSupported then
+        -- Trả về proxy ảo để không crash
+        return { Visible = false, Remove = function() end }
+    end
     local d = Drawing.new(type)
     for k, v in pairs(properties) do d[k] = v end
     return d
 end
 
-local function removePlayerEsp(player)
-    local cache = espCache[player]
-    if cache then
-        for _, d in pairs(cache) do if d then d:Remove() end end
-        espCache[player] = nil
-    end
-end
-
-local function updatePlayerEsp(player, character)
-    local cache = espCache[player]
-    if not cache then
-        cache = {}
-        if Settings.BoxESP then
-            cache.box = createDrawing("Square", {Visible=false, Color=Color3.fromRGB(255,255,255), Thickness=2, Transparency=0.5})
-        end
-        if Settings.NameESP then
-            cache.name = createDrawing("Text", {Visible=false, Color=Color3.fromRGB(255,255,255), Size=14, Center=true, Outline=true, OutlineColor=Color3.fromRGB(0,0,0)})
-        end
-        if Settings.DistESP then
-            cache.dist = createDrawing("Text", {Visible=false, Color=Color3.fromRGB(200,200,200), Size=13, Center=true, Outline=true, OutlineColor=Color3.fromRGB(0,0,0)})
-        end
-        if Settings.HealthESP then
-            cache.healthBar = createDrawing("Line", {Visible=false, Color=Color3.fromRGB(0,255,0), Thickness=4, Transparency=0.7})
-            cache.healthBg = createDrawing("Line", {Visible=false, Color=Color3.fromRGB(40,40,40), Thickness=4, Transparency=0.7})
-        end
-        espCache[player] = cache
-    end
-
-    local head = character and character:FindFirstChild("Head")
-    local hum = character and character:FindFirstChild("Humanoid")
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not head or not hum or hum.Health <= 0 then
-        for _, d in pairs(cache) do if d then d.Visible = false end end
-        return
-    end
-
-    local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-    if not onScreen then
-        for _, d in pairs(cache) do if d then d.Visible = false end end
-        return
-    end
-
-    local rootPos = root and root.Position or head.Position
-    local rootScreen = Camera:WorldToViewportPoint(rootPos)
-    local distance = (Camera.CFrame.Position - rootPos).Magnitude
-    local yMin = headPos.Y
-    local yMax = rootScreen.Y
-    local xMin = headPos.X - (yMax - yMin)/4
-    local xMax = headPos.X + (yMax - yMin)/4
-
-    if cache.box then
-        cache.box.Visible = Settings.BoxESP
-        cache.box.Size = Vector2.new(xMax - xMin, yMax - yMin)
-        cache.box.Position = Vector2.new(xMin, yMin)
-    end
-    if cache.name then
-        cache.name.Visible = Settings.NameESP
-        cache.name.Text = player.Name
-        cache.name.Position = Vector2.new(xMin + (xMax-xMin)/2, yMin - 18)
-    end
-    if cache.dist then
-        cache.dist.Visible = Settings.DistESP
-        cache.dist.Text = math.floor(distance).."m"
-        cache.dist.Position = Vector2.new(xMin + (xMax-xMin)/2, yMax + 2)
-    end
-    if cache.healthBar and cache.healthBg then
-        cache.healthBar.Visible = Settings.HealthESP
-        cache.healthBg.Visible = Settings.HealthESP
-        local health = hum.Health / hum.MaxHealth
-        local barW = 4
-        local barX = xMin - barW - 2
-        local barY = yMin
-        local barH = yMax - yMin
-        cache.healthBar.From = Vector2.new(barX, barY + barH)
-        cache.healthBar.To = Vector2.new(barX, barY + barH * (1 - health))
-        cache.healthBg.From = Vector2.new(barX, barY)
-        cache.healthBg.To = Vector2.new(barX, barY + barH)
-    end
-end
-
 -- ===================== VÒNG LẶP CHÍNH =====================
 RunService.RenderStepped:Connect(function(dt)
     -- FOV Circle
-    FOVCircle.Visible = Settings.ShowFOV or Settings.Aimbot or Settings.SilentAim
-    FOVCircle.Radius = Settings.FOVSize
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
+    if DrawingSupported then
+        FOVCircle.Visible = Settings.ShowFOV or Settings.Aimbot or Settings.SilentAim
+        FOVCircle.Radius = Settings.FOVSize
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
+    end
 
     -- Aimbot
     if Settings.Aimbot then
@@ -973,16 +913,18 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- ESP + Wallhack
-    local activePlayers = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            activePlayers[player] = true
-            updatePlayerEsp(player, player.Character)
+    -- ESP + Wallhack (chỉ xử lý nếu Drawing hỗ trợ hoặc Highlight)
+    if DrawingSupported then
+        local activePlayers = {}
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                activePlayers[player] = true
+                updatePlayerEsp(player, player.Character)
+            end
         end
-    end
-    for player, _ in pairs(espCache) do
-        if not activePlayers[player] then removePlayerEsp(player) end
+        for player, _ in pairs(espCache) do
+            if not activePlayers[player] then removePlayerEsp(player) end
+        end
     end
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then UpdateHighlight(player) end
@@ -1039,4 +981,3 @@ end
 if Settings.AntiCheatBypass then removeAntiCheat() end
 
 print("[FPS GOD MENU v15] ZeroHub UI loaded successfully!")
-```
