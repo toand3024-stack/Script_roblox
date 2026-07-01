@@ -1,7 +1,8 @@
+
 --[[
-    FPS GOD MENU v16 LANDSCAPE – FIX KHÔNG HIỂN THỊ
-    Sửa lỗi CoreGui, hook, scale, và tối ưu khởi tạo.
-    Chạy ổn định trên Delta Mobile và hầu hết executor.
+    FPS GOD MENU v17 LANDSCAPE – KÉO RESIZE TÙY Ý
+    Bổ sung: kéo góc dưới phải để thay đổi kích thước menu.
+    Nút to, dễ bấm, giữ nguyên mọi chức năng.
 ]]
 
 -- ==================== DỊCH VỤ ====================
@@ -12,10 +13,9 @@ local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local VIM = game:GetService("VirtualInputManager")
 local NetworkClient = game:GetService("NetworkClient")
-local TeleportService = game:GetService("TeleportService")
 local TextChatService = game:GetService("TextChatService")
 
--- ==================== CẤU HÌNH ====================
+-- ==================== CÀI ĐẶT ====================
 local Settings = {
     Aimbot = false,
     AimbotSmooth = 10,
@@ -42,7 +42,7 @@ local Settings = {
     FakeLag = false,
     FakeLagMs = 200,
     ChatSpam = false,
-    SpamMessage = "FPS GOD v16",
+    SpamMessage = "FPS GOD v17",
     SpamInterval = 3,
     AntiKick = false,
     AntiReport = false,
@@ -58,26 +58,20 @@ local espCache = {}
 local highlightCache = {}
 local chatSpamRunning = false
 
--- ===================== ANTI-BAN HOOKS (AN TOÀN) =====================
+-- ===================== ANTI-BAN =====================
 pcall(function()
     if Settings.AntiKick then
         local oldKick = LocalPlayer.Kick
-        LocalPlayer.Kick = function(self, ...)
-            return nil
-        end
+        LocalPlayer.Kick = function(self, ...) return nil end
     end
 end)
 
 pcall(function()
     if Settings.AntiReport then
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then
-                p.ReportAbuse = function() end
-            end
+            if p ~= LocalPlayer then p.ReportAbuse = function() end end
         end
-        Players.PlayerAdded:Connect(function(p)
-            p.ReportAbuse = function() end
-        end)
+        Players.PlayerAdded:Connect(function(p) p.ReportAbuse = function() end end)
     end
 end)
 
@@ -87,48 +81,35 @@ local function removeAntiCheat()
         if obj:IsA("ModuleScript") or obj:IsA("LocalScript") or obj:IsA("Script") then
             local name = obj.Name:lower()
             for _, kw in ipairs(keywords) do
-                if name:find(kw) then
-                    pcall(function() obj:Destroy() end)
-                    break
-                end
+                if name:find(kw) then pcall(function() obj:Destroy() end) break end
             end
         end
     end
 end
 if Settings.AntiCheatBypass then removeAntiCheat() end
 task.spawn(function()
-    while task.wait(30) do
-        if Settings.AntiCheatBypass then removeAntiCheat() end
-    end
+    while task.wait(30) do if Settings.AntiCheatBypass then removeAntiCheat() end end
 end)
 
--- ===================== GIAO DIỆN (UI) =====================
+-- ===================== GIAO DIỆN =====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "FPS_GodMenu"
 ScreenGui.ResetOnSpawn = false
-
--- Chọn parent phù hợp (PlayerGui an toàn hơn CoreGui)
 local parent = LocalPlayer:FindFirstChild("PlayerGui") or game:GetService("CoreGui")
-ScreenGui.Parent = parent
-if not ScreenGui.Parent then
-    warn("Không tìm thấy PlayerGui hay CoreGui, tạo mới trong CoreGui")
-    ScreenGui.Parent = game:GetService("CoreGui")
-end
+ScreenGui.Parent = parent or game:GetService("CoreGui")
 
--- Đợi viewport sẵn sàng
 local viewport = Camera.ViewportSize
 while viewport.X == 0 or viewport.Y == 0 do
     wait(0.1)
     viewport = Camera.ViewportSize
 end
 
-local baseScale = math.min(viewport.X / 800, viewport.Y / 600)
-baseScale = math.clamp(baseScale, 0.5, 1.5)
+local baseScale = math.clamp(math.min(viewport.X / 800, viewport.Y / 600), 0.5, 1.5)
 local UIScale = Instance.new("UIScale")
 UIScale.Scale = baseScale
 UIScale.Parent = ScreenGui
 
--- MainFrame – rộng, mỏng
+-- MainFrame – có thể resize
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, math.min(viewport.X * 0.8, 600), 0, math.min(viewport.Y * 0.6, 360))
 MainFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset/2, 0.5, -MainFrame.Size.Y.Offset/2)
@@ -143,7 +124,7 @@ TitleBar.Size = UDim2.new(1, -50, 0, 32)
 TitleBar.Position = UDim2.new(0, 0, 0, 0)
 TitleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 TitleBar.BorderSizePixel = 0
-TitleBar.Text = "FPS GOD v16  |  KÉO ĐỂ DI CHUYỂN"
+TitleBar.Text = "FPS GOD v17  |  KÉO ĐỂ DI CHUYỂN"
 TitleBar.Font = Enum.Font.GothamBold
 TitleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleBar.TextSize = 14
@@ -173,6 +154,41 @@ OpenBtn.TextSize = 24
 OpenBtn.Visible = false
 OpenBtn.Parent = ScreenGui
 Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(1, 0)
+
+-- ===================== RESIZE HANDLE =====================
+local ResizeHandle = Instance.new("TextButton")
+ResizeHandle.Size = UDim2.new(0, 28, 0, 28)
+ResizeHandle.Position = UDim2.new(1, -28, 1, -28)
+ResizeHandle.BackgroundColor3 = Color3.fromRGB(100, 100, 120)
+ResizeHandle.BorderSizePixel = 0
+ResizeHandle.Text = "◢"
+ResizeHandle.Font = Enum.Font.GothamBold
+ResizeHandle.TextColor3 = Color3.fromRGB(255, 255, 255)
+ResizeHandle.TextSize = 18
+ResizeHandle.Parent = MainFrame
+
+local resizing, resizeStart, startSize = false
+ResizeHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        resizing = true
+        resizeStart = input.Position
+        startSize = MainFrame.Size
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then resizing = false end
+        end)
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - resizeStart
+        local newWidth = math.clamp(startSize.X.Offset + delta.X / UIScale.Scale, 320, 650)
+        local newHeight = math.clamp(startSize.Y.Offset + delta.Y / UIScale.Scale, 300, 500)
+        MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+        -- Cập nhật CanvasSize cho ContentScroll sau khi resize (gọi lại BuildTab)
+        -- Ta sẽ gọi BuildTab(currentTab) để refresh layout
+        BuildTab(currentTab)
+    end
+end)
 
 -- ===================== SCALE SLIDER =====================
 local ScaleFrame = Instance.new("Frame")
@@ -485,11 +501,8 @@ local function BuildTab(tabIndex)
     elseif tabIndex == 5 then    -- Troll
         CreateToggle("Fake Lag", Settings.FakeLag, function(v)
             Settings.FakeLag = v
-            if v then
-                NetworkClient:SetFakeLatency(Settings.FakeLagMs / 1000)
-            else
-                NetworkClient:SetFakeLatency(0)
-            end
+            if v then NetworkClient:SetFakeLatency(Settings.FakeLagMs / 1000)
+            else NetworkClient:SetFakeLatency(0) end
         end)
         CreateSlider("Lag (ms)", 50, 1000, Settings.FakeLagMs, function(v)
             Settings.FakeLagMs = v
@@ -509,9 +522,7 @@ local function BuildTab(tabIndex)
                         task.wait(Settings.SpamInterval)
                     end
                 end)
-            else
-                chatSpamRunning = false
-            end
+            else chatSpamRunning = false end
         end)
         local msgInput = Instance.new("TextBox")
         msgInput.Size = UDim2.new(1, -10, 0, 48)
@@ -560,20 +571,18 @@ for i, name in ipairs(Tabs) do
     TabBtns[i] = btn
 
     btn.MouseButton1Click:Connect(function()
-        for j, b in ipairs(TabBtns) do
-            b.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-        end
+        for j, b in ipairs(TabBtns) do b.BackgroundColor3 = Color3.fromRGB(50, 50, 65) end
         btn.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
         currentTab = i
         BuildTab(i)
     end)
 end
 
--- Kích hoạt tab đầu tiên
+-- Kích hoạt tab đầu
 TabBtns[1].BackgroundColor3 = Color3.fromRGB(70, 130, 200)
 BuildTab(1)
 
--- ===================== KÉO & MINIMIZE =====================
+-- ===================== DI CHUYỂN MENU =====================
 local dragging, dragStart, startPos = false
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -631,9 +640,9 @@ FOVCircle.Radius = 100
 FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
 FOVCircle.Filled = false
 
-local function createDrawing(type, properties)
+local function createDrawing(type, props)
     local d = Drawing.new(type)
-    for k, v in pairs(properties) do d[k] = v end
+    for k, v in pairs(props) do d[k] = v end
     return d
 end
 
@@ -899,12 +908,11 @@ local function HandleFly()
     bg.CFrame = Camera.CFrame
 end
 
--- ===================== VÒNG LẶP CHÍNH =====================
+-- ===================== MAIN LOOP =====================
 local lastEspUpdate = 0
 local espUpdateInterval = 0.05
 
 RunService.RenderStepped:Connect(function(dt)
-    -- FOV Circle
     FOVCircle.Visible = Settings.ShowFOV or Settings.Aimbot or Settings.SilentAim
     if FOVCircle.Visible then
         FOVCircle.Radius = Settings.FOVSize
@@ -912,7 +920,6 @@ RunService.RenderStepped:Connect(function(dt)
         FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
     end
 
-    -- Aimbot
     if Settings.Aimbot then
         local target = GetClosestVisibleEnemy()
         AimTarget = target
@@ -930,7 +937,6 @@ RunService.RenderStepped:Connect(function(dt)
         AimTarget = nil
     end
 
-    -- Trigger Bot
     if Settings.TriggerBot and tick() - lastTriggerTime >= 0.2 then
         lastTriggerTime = tick()
         local char = LocalPlayer.Character
@@ -948,7 +954,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- ESP + Wallhack (cập nhật cách quãng)
     if tick() - lastEspUpdate >= espUpdateInterval then
         lastEspUpdate = tick()
         local activePlayers = {}
@@ -1008,7 +1013,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
--- Khởi tạo ban đầu nếu có nhân vật
 if LocalPlayer.Character then
     SetupSilentAim(Settings.SilentAim)
     local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
@@ -1020,4 +1024,4 @@ end
 
 if Settings.AntiCheatBypass then removeAntiCheat() end
 
-print("[FPS GOD MENU v16 Landscape] Đã load thành công! Menu hiện ra trên màn hình.")
+print("[FPS GOD MENU v17] Đã load! Kéo góc dưới phải để resize menu.")
