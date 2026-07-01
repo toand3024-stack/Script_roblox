@@ -1,8 +1,8 @@
-
+```lua
 --[[
-    FPS GOD MENU v17 LANDSCAPE – KÉO RESIZE TÙY Ý
-    Bổ sung: kéo góc dưới phải để thay đổi kích thước menu.
-    Nút to, dễ bấm, giữ nguyên mọi chức năng.
+    FPS GOD MENU v15 ULTIMATE – ZEROHUB STYLE UI
+    Giữ nguyên toàn bộ chức năng (Aimbot, ESP, Fly, Noclip, Fake Lag, Chat Spam, Anti-Ban, Teleport, ...)
+    Giao diện mới: Sidebar trái, Dark Theme, Switch/Slider hiện đại.
 ]]
 
 -- ==================== DỊCH VỤ ====================
@@ -13,10 +13,14 @@ local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local VIM = game:GetService("VirtualInputManager")
 local NetworkClient = game:GetService("NetworkClient")
+local TeleportService = game:GetService("TeleportService")
 local TextChatService = game:GetService("TextChatService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
--- ==================== CÀI ĐẶT ====================
+-- ==================== CẤU HÌNH ====================
 local Settings = {
+    -- Combat
     Aimbot = false,
     AimbotSmooth = 10,
     ShowFOV = false,
@@ -24,11 +28,15 @@ local Settings = {
     FOVColor = "Red",
     SilentAim = false,
     TriggerBot = false,
+
+    -- Visual
     BoxESP = false,
     NameESP = false,
     DistESP = false,
     HealthESP = false,
     Wallhack = false,
+
+    -- Misc
     InfAmmo = false,
     NoRecoil = false,
     FastFire = false,
@@ -39,11 +47,15 @@ local Settings = {
     HighJump = false,
     JumpPower = 100,
     Noclip = false,
+
+    -- Troll
     FakeLag = false,
     FakeLagMs = 200,
     ChatSpam = false,
-    SpamMessage = "FPS GOD v17",
+    SpamMessage = "FPS GOD v15",
     SpamInterval = 3,
+
+    -- Anti-Ban
     AntiKick = false,
     AntiReport = false,
     AntiCheatBypass = false
@@ -58,22 +70,25 @@ local espCache = {}
 local highlightCache = {}
 local chatSpamRunning = false
 
--- ===================== ANTI-BAN =====================
-pcall(function()
-    if Settings.AntiKick then
-        local oldKick = LocalPlayer.Kick
-        LocalPlayer.Kick = function(self, ...) return nil end
-    end
+-- ===================== ANTI-BAN HOOKS =====================
+local oldKick = hookfunction(LocalPlayer.Kick, function(self, ...)
+    if Settings.AntiKick then return nil end
+    return oldKick(self, ...)
 end)
 
-pcall(function()
-    if Settings.AntiReport then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then p.ReportAbuse = function() end end
+local function hookReport(player)
+    pcall(function()
+        if player ~= LocalPlayer and not player.ReportHooked then
+            local oldReport = hookfunction(player.ReportAbuse, function(...)
+                if Settings.AntiReport then return nil end
+                return oldReport(...)
+            end)
+            player.ReportHooked = true
         end
-        Players.PlayerAdded:Connect(function(p) p.ReportAbuse = function() end end)
-    end
-end)
+    end)
+end
+for _, p in ipairs(Players:GetPlayers()) do hookReport(p) end
+Players.PlayerAdded:Connect(hookReport)
 
 local function removeAntiCheat()
     local keywords = {"anti", "cheat", "ban", "detect", "hack", "ac_", "anticheat", "sentry"}
@@ -81,277 +96,122 @@ local function removeAntiCheat()
         if obj:IsA("ModuleScript") or obj:IsA("LocalScript") or obj:IsA("Script") then
             local name = obj.Name:lower()
             for _, kw in ipairs(keywords) do
-                if name:find(kw) then pcall(function() obj:Destroy() end) break end
+                if name:find(kw) then
+                    pcall(function() obj:Destroy() end)
+                    break
+                end
             end
         end
     end
 end
 if Settings.AntiCheatBypass then removeAntiCheat() end
 task.spawn(function()
-    while task.wait(30) do if Settings.AntiCheatBypass then removeAntiCheat() end end
-end)
-
--- ===================== GIAO DIỆN =====================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FPS_GodMenu"
-ScreenGui.ResetOnSpawn = false
-local parent = LocalPlayer:FindFirstChild("PlayerGui") or game:GetService("CoreGui")
-ScreenGui.Parent = parent or game:GetService("CoreGui")
-
-local viewport = Camera.ViewportSize
-while viewport.X == 0 or viewport.Y == 0 do
-    wait(0.1)
-    viewport = Camera.ViewportSize
-end
-
-local baseScale = math.clamp(math.min(viewport.X / 800, viewport.Y / 600), 0.5, 1.5)
-local UIScale = Instance.new("UIScale")
-UIScale.Scale = baseScale
-UIScale.Parent = ScreenGui
-
--- MainFrame – có thể resize
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, math.min(viewport.X * 0.8, 600), 0, math.min(viewport.Y * 0.6, 360))
-MainFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset/2, 0.5, -MainFrame.Size.Y.Offset/2)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Visible = true
-MainFrame.Parent = ScreenGui
-
-local TitleBar = Instance.new("TextButton")
-TitleBar.Size = UDim2.new(1, -50, 0, 32)
-TitleBar.Position = UDim2.new(0, 0, 0, 0)
-TitleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-TitleBar.BorderSizePixel = 0
-TitleBar.Text = "FPS GOD v17  |  KÉO ĐỂ DI CHUYỂN"
-TitleBar.Font = Enum.Font.GothamBold
-TitleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleBar.TextSize = 14
-TitleBar.TextXAlignment = Enum.TextXAlignment.Left
-TitleBar.Parent = MainFrame
-
-local MinimizeBtn = Instance.new("TextButton")
-MinimizeBtn.Size = UDim2.new(0, 28, 0, 28)
-MinimizeBtn.Position = UDim2.new(1, -30, 0, 2)
-MinimizeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
-MinimizeBtn.BorderSizePixel = 0
-MinimizeBtn.Text = "━"
-MinimizeBtn.Font = Enum.Font.GothamBold
-MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeBtn.TextSize = 18
-MinimizeBtn.Parent = MainFrame
-
-local OpenBtn = Instance.new("TextButton")
-OpenBtn.Size = UDim2.new(0, 48, 0, 48)
-OpenBtn.Position = UDim2.new(0.5, -24, 0.5, -24)
-OpenBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
-OpenBtn.BorderSizePixel = 0
-OpenBtn.Text = "⚡"
-OpenBtn.Font = Enum.Font.GothamBold
-OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-OpenBtn.TextSize = 24
-OpenBtn.Visible = false
-OpenBtn.Parent = ScreenGui
-Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(1, 0)
-
--- ===================== RESIZE HANDLE =====================
-local ResizeHandle = Instance.new("TextButton")
-ResizeHandle.Size = UDim2.new(0, 28, 0, 28)
-ResizeHandle.Position = UDim2.new(1, -28, 1, -28)
-ResizeHandle.BackgroundColor3 = Color3.fromRGB(100, 100, 120)
-ResizeHandle.BorderSizePixel = 0
-ResizeHandle.Text = "◢"
-ResizeHandle.Font = Enum.Font.GothamBold
-ResizeHandle.TextColor3 = Color3.fromRGB(255, 255, 255)
-ResizeHandle.TextSize = 18
-ResizeHandle.Parent = MainFrame
-
-local resizing, resizeStart, startSize = false
-ResizeHandle.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        resizing = true
-        resizeStart = input.Position
-        startSize = MainFrame.Size
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then resizing = false end
-        end)
-    end
-end)
-UIS.InputChanged:Connect(function(input)
-    if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - resizeStart
-        local newWidth = math.clamp(startSize.X.Offset + delta.X / UIScale.Scale, 320, 650)
-        local newHeight = math.clamp(startSize.Y.Offset + delta.Y / UIScale.Scale, 300, 500)
-        MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
-        -- Cập nhật CanvasSize cho ContentScroll sau khi resize (gọi lại BuildTab)
-        -- Ta sẽ gọi BuildTab(currentTab) để refresh layout
-        BuildTab(currentTab)
+    while task.wait(30) do
+        if Settings.AntiCheatBypass then removeAntiCheat() end
     end
 end)
 
--- ===================== SCALE SLIDER =====================
-local ScaleFrame = Instance.new("Frame")
-ScaleFrame.Size = UDim2.new(1, 0, 0, 28)
-ScaleFrame.Position = UDim2.new(0, 0, 0, 34)
-ScaleFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-ScaleFrame.BorderSizePixel = 0
-ScaleFrame.Parent = MainFrame
-
-local ScaleLabel = Instance.new("TextLabel")
-ScaleLabel.Size = UDim2.new(0, 80, 1, 0)
-ScaleLabel.Position = UDim2.new(0, 4, 0, 0)
-ScaleLabel.BackgroundTransparency = 1
-ScaleLabel.Text = "Scale: " .. string.format("%.1f", UIScale.Scale)
-ScaleLabel.Font = Enum.Font.GothamSemibold
-ScaleLabel.TextSize = 13
-ScaleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-ScaleLabel.TextXAlignment = Enum.TextXAlignment.Left
-ScaleLabel.Parent = ScaleFrame
-
-local ScaleBar = Instance.new("Frame")
-ScaleBar.Size = UDim2.new(1, -100, 0, 22)
-ScaleBar.Position = UDim2.new(0, 90, 0.5, -11)
-ScaleBar.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-ScaleBar.BorderSizePixel = 0
-Instance.new("UICorner", ScaleBar).CornerRadius = UDim.new(0, 6)
-ScaleBar.Parent = ScaleFrame
-
-local ScaleFill = Instance.new("Frame")
-ScaleFill.Size = UDim2.new((UIScale.Scale - 0.5) / 1.0, 0, 1, 0)
-ScaleFill.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
-ScaleFill.BorderSizePixel = 0
-Instance.new("UICorner", ScaleFill).CornerRadius = UDim.new(0, 6)
-ScaleFill.Parent = ScaleBar
-
-local ScaleKnob = Instance.new("TextButton")
-ScaleKnob.Size = UDim2.new(0, 24, 0, 24)
-ScaleKnob.Position = UDim2.new((UIScale.Scale - 0.5) / 1.0, -12, 0.5, -12)
-ScaleKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-ScaleKnob.BorderSizePixel = 0
-ScaleKnob.Text = ""
-Instance.new("UICorner", ScaleKnob).CornerRadius = UDim.new(1, 0)
-ScaleKnob.Parent = ScaleBar
-
-local scaleDragging = false
-ScaleKnob.MouseButton1Down:Connect(function() scaleDragging = true end)
-UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        scaleDragging = false
-    end
+local oldTeleport = hookfunction(TeleportService.Teleport, function(...)
+    if Settings.AntiTeleport then return nil end
+    return oldTeleport(...)
 end)
-UIS.InputChanged:Connect(function(input)
-    if scaleDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local mousePos = UIS:GetMouseLocation()
-        local barAbsPos = ScaleBar.AbsolutePosition
-        local barAbsSize = ScaleBar.AbsoluteSize
-        local alpha = math.clamp((mousePos.X - barAbsPos.X) / barAbsSize.X, 0, 1)
-        local newScale = 0.5 + alpha * 1.0
-        UIScale.Scale = newScale
-        ScaleFill.Size = UDim2.new(alpha, 0, 1, 0)
-        ScaleKnob.Position = UDim2.new(alpha, -12, 0.5, -12)
-        ScaleLabel.Text = "Scale: " .. string.format("%.1f", newScale)
-    end
-end)
-
--- ===================== TAB BAR =====================
-local TabButtons = Instance.new("Frame")
-TabButtons.Size = UDim2.new(1, 0, 0, 38)
-TabButtons.Position = UDim2.new(0, 0, 0, 64)
-TabButtons.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-TabButtons.BorderSizePixel = 0
-TabButtons.Parent = MainFrame
-
-local Tabs = {"Combat", "Visual", "Misc", "Teleport", "Troll", "Anti-Ban"}
-local TabBtns = {}
-local currentTab = 1
-
-local ContentScroll = Instance.new("ScrollingFrame")
-ContentScroll.Size = UDim2.new(1, -4, 1, -106)
-ContentScroll.Position = UDim2.new(0, 2, 0, 104)
-ContentScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-ContentScroll.BorderSizePixel = 0
-ContentScroll.ScrollBarThickness = 6
-ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ContentScroll.Parent = MainFrame
 
 -- ===================== UI HELPERS =====================
-local function ClearContent()
-    for _, child in ipairs(ContentScroll:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("TextBox") or child:IsA("TextLabel") or child:IsA("ScrollingFrame") then
-            child:Destroy()
-        end
-    end
-end
-
-local function CreateToggle(name, default, callback)
+local function CreateSwitch(parent, labelText, default, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -10, 0, 52)
+    frame.Size = UDim2.new(1, -20, 0, 40)
     frame.BackgroundTransparency = 1
-    frame.Parent = ContentScroll
-
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -60, 1, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-    btn.BorderSizePixel = 0
-    btn.Text = "  " .. name
-    btn.Font = Enum.Font.GothamSemibold
-    btn.TextSize = 18
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.Parent = frame
-
-    local indicator = Instance.new("Frame")
-    indicator.Size = UDim2.new(0, 36, 0, 36)
-    indicator.Position = UDim2.new(1, -46, 0.5, -18)
-    indicator.BackgroundColor3 = default and Color3.fromRGB(0, 230, 0) or Color3.fromRGB(230, 0, 0)
-    indicator.BorderSizePixel = 0
-    Instance.new("UICorner", indicator).CornerRadius = UDim.new(1, 0)
-    indicator.Parent = frame
-
-    local state = default
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        indicator.BackgroundColor3 = state and Color3.fromRGB(0, 230, 0) or Color3.fromRGB(230, 0, 0)
-        callback(state)
-    end)
-    return frame
-end
-
-local function CreateSlider(name, min, max, default, callback)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, -10, 0, 72)
-    frame.BackgroundTransparency = 1
-    frame.Parent = ContentScroll
+    frame.Parent = parent
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 24)
+    label.Size = UDim2.new(0.7, 0, 1, 0)
+    label.Position = UDim2.new(0, 0, 0, 0)
     label.BackgroundTransparency = 1
-    label.Text = name .. ": " .. default
+    label.Text = labelText
     label.Font = Enum.Font.GothamSemibold
     label.TextSize = 16
     label.TextColor3 = Color3.fromRGB(220, 220, 220)
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
 
+    local switchBg = Instance.new("Frame")
+    switchBg.Size = UDim2.new(0, 50, 0, 28)
+    switchBg.Position = UDim2.new(1, -55, 0.5, -14)
+    switchBg.BackgroundColor3 = default and Color3.fromRGB(0, 176, 255) or Color3.fromRGB(60, 60, 70)
+    switchBg.BorderSizePixel = 0
+    Instance.new("UICorner", switchBg).CornerRadius = UDim.new(1, 0)
+    switchBg.Parent = frame
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 22, 0, 22)
+    knob.Position = default and UDim2.new(0, 26, 0, 3) or UDim2.new(0, 3, 0, 3)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel = 0
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    knob.Parent = switchBg
+
+    local state = default
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = switchBg
+
+    local function updateSwitch(newState)
+        state = newState
+        local goal = {}
+        if state then
+            switchBg.BackgroundColor3 = Color3.fromRGB(0, 176, 255)
+            goal.Position = UDim2.new(0, 26, 0, 3)
+        else
+            switchBg.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+            goal.Position = UDim2.new(0, 3, 0, 3)
+        end
+        TweenService:Create(knob, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
+        callback(state)
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        updateSwitch(not state)
+    end)
+
+    return frame
+end
+
+local function CreateSlider(parent, name, min, max, default, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, -20, 0, 60)
+    frame.BackgroundTransparency = 1
+    frame.Parent = parent
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 0, 22)
+    label.BackgroundTransparency = 1
+    label.Text = name .. ": " .. default
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 15
+    label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, 0, 0, 28)
+    bar.Size = UDim2.new(1, 0, 0, 20)
     bar.Position = UDim2.new(0, 0, 0, 28)
-    bar.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+    bar.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
     bar.BorderSizePixel = 0
     Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 8)
     bar.Parent = frame
 
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
+    fill.BackgroundColor3 = Color3.fromRGB(0, 176, 255)
     fill.BorderSizePixel = 0
     Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 8)
     fill.Parent = bar
 
     local knob = Instance.new("TextButton")
-    knob.Size = UDim2.new(0, 30, 0, 30)
-    knob.Position = UDim2.new((default - min) / (max - min), -15, 0.5, -15)
+    knob.Size = UDim2.new(0, 24, 0, 24)
+    knob.Position = UDim2.new((default - min) / (max - min), -12, 0.5, -12)
     knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     knob.BorderSizePixel = 0
     knob.Text = ""
@@ -359,6 +219,7 @@ local function CreateSlider(name, min, max, default, callback)
     knob.Parent = bar
 
     local draggingSlider = false
+    local value = default
     knob.MouseButton1Down:Connect(function() draggingSlider = true end)
     UIS.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -371,9 +232,9 @@ local function CreateSlider(name, min, max, default, callback)
             local barAbsPos = bar.AbsolutePosition
             local barAbsSize = bar.AbsoluteSize
             local alpha = math.clamp((mousePos.X - barAbsPos.X) / barAbsSize.X, 0, 1)
-            local value = math.floor(min + (max - min) * alpha)
+            value = math.floor(min + (max - min) * alpha)
             fill.Size = UDim2.new(alpha, 0, 1, 0)
-            knob.Position = UDim2.new(alpha, -15, 0.5, -15)
+            knob.Position = UDim2.new(alpha, -12, 0.5, -12)
             label.Text = name .. ": " .. value
             callback(value)
         end
@@ -381,208 +242,100 @@ local function CreateSlider(name, min, max, default, callback)
     return frame
 end
 
--- ===================== XÂY DỰNG NỘI DUNG TAB =====================
-local function BuildTab(tabIndex)
-    ClearContent()
-    if tabIndex == 1 then        -- Combat
-        CreateToggle("Aimbot", Settings.Aimbot, function(v) Settings.Aimbot = v end)
-        CreateSlider("Smooth", 1, 20, Settings.AimbotSmooth, function(v) Settings.AimbotSmooth = v end)
-        CreateToggle("Show FOV", Settings.ShowFOV, function(v) Settings.ShowFOV = v end)
-        CreateSlider("FOV Size", 20, 800, Settings.FOVSize, function(v) Settings.FOVSize = v end)
-
-        local fovColorBtn = Instance.new("TextButton")
-        fovColorBtn.Size = UDim2.new(1, -10, 0, 48)
-        fovColorBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-        fovColorBtn.BorderSizePixel = 0
-        fovColorBtn.Text = "FOV Color: " .. Settings.FOVColor
-        fovColorBtn.Font = Enum.Font.GothamSemibold
-        fovColorBtn.TextSize = 18
-        fovColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        fovColorBtn.Parent = ContentScroll
-        fovColorBtn.MouseButton1Click:Connect(function()
-            Settings.FOVColor = (Settings.FOVColor == "Red") and "Green" or "Red"
-            fovColorBtn.Text = "FOV Color: " .. Settings.FOVColor
-        end)
-
-        CreateToggle("Silent Aim", Settings.SilentAim, function(v) Settings.SilentAim = v; SetupSilentAim(v) end)
-        CreateToggle("Trigger Bot", Settings.TriggerBot, function(v) Settings.TriggerBot = v end)
-
-    elseif tabIndex == 2 then    -- Visual
-        CreateToggle("Box ESP", Settings.BoxESP, function(v) Settings.BoxESP = v end)
-        CreateToggle("Name ESP", Settings.NameESP, function(v) Settings.NameESP = v end)
-        CreateToggle("Distance ESP", Settings.DistESP, function(v) Settings.DistESP = v end)
-        CreateToggle("Health ESP", Settings.HealthESP, function(v) Settings.HealthESP = v end)
-        CreateToggle("Wallhack (Chams)", Settings.Wallhack, function(v)
-            Settings.Wallhack = v
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then UpdateHighlight(player) end
-            end
-        end)
-
-    elseif tabIndex == 3 then    -- Misc
-        CreateToggle("Infinite Ammo", Settings.InfAmmo, function(v) Settings.InfAmmo = v end)
-        CreateToggle("No Recoil", Settings.NoRecoil, function(v) Settings.NoRecoil = v end)
-        CreateToggle("Fast Fire", Settings.FastFire, function(v) Settings.FastFire = v end)
-        CreateToggle("Speed Hack", Settings.SpeedHack, function(v)
-            Settings.SpeedHack = v
-            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-            if hum then hum.WalkSpeed = v and Settings.SpeedValue or 16 end
-        end)
-        CreateSlider("Speed Value", 24, 200, Settings.SpeedValue, function(v)
-            Settings.SpeedValue = v
-            if Settings.SpeedHack and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                LocalPlayer.Character.Humanoid.WalkSpeed = v
-            end
-        end)
-        CreateToggle("Fly", Settings.Fly, function(v)
-            Settings.Fly = v
-            ToggleFly(v)
-        end)
-        CreateSlider("Fly Speed", 30, 200, Settings.FlySpeed, function(v) Settings.FlySpeed = v end)
-        CreateToggle("High Jump", Settings.HighJump, function(v)
-            Settings.HighJump = v
-            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-            if hum then hum.JumpPower = v and Settings.JumpPower or 50 end
-        end)
-        CreateSlider("Jump Height", 50, 500, Settings.JumpPower, function(v)
-            Settings.JumpPower = v
-            if Settings.HighJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                LocalPlayer.Character.Humanoid.JumpPower = v
-            end
-        end)
-        CreateToggle("Noclip", Settings.Noclip, function(v)
-            Settings.Noclip = v
-            ToggleNoclip(v)
-        end)
-
-    elseif tabIndex == 4 then    -- Teleport
-        local playerList = Instance.new("ScrollingFrame")
-        playerList.Size = UDim2.new(1, -10, 1, -10)
-        playerList.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-        playerList.ScrollBarThickness = 8
-        playerList.BorderSizePixel = 0
-        playerList.CanvasSize = UDim2.new(0, 0, 0, 0)
-        playerList.Parent = ContentScroll
-
-        local function UpdateTeleportList()
-            for _, child in ipairs(playerList:GetChildren()) do
-                if child:IsA("TextButton") then child:Destroy() end
-            end
-            local y = 4
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player == LocalPlayer then continue end
-                local btn = Instance.new("TextButton")
-                btn.Size = UDim2.new(1, -10, 0, 44)
-                btn.Position = UDim2.new(0, 5, 0, y)
-                btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-                btn.BorderSizePixel = 0
-                btn.Text = player.Name
-                btn.Font = Enum.Font.GothamSemibold
-                btn.TextSize = 18
-                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-                btn.Parent = playerList
-                btn.MouseButton1Click:Connect(function()
-                    local myChar = LocalPlayer.Character
-                    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    local targetChar = player.Character
-                    local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-                    if myRoot and targetRoot then
-                        myRoot.CFrame = targetRoot.CFrame + Vector3.new(0, 2, 0)
-                    end
-                end)
-                y = y + 48
-            end
-            playerList.CanvasSize = UDim2.new(0, 0, 0, y + 10)
-        end
-        UpdateTeleportList()
-        Players.PlayerAdded:Connect(function() task.delay(0.5, UpdateTeleportList) end)
-        Players.PlayerRemoving:Connect(function() task.delay(0.5, UpdateTeleportList) end)
-
-    elseif tabIndex == 5 then    -- Troll
-        CreateToggle("Fake Lag", Settings.FakeLag, function(v)
-            Settings.FakeLag = v
-            if v then NetworkClient:SetFakeLatency(Settings.FakeLagMs / 1000)
-            else NetworkClient:SetFakeLatency(0) end
-        end)
-        CreateSlider("Lag (ms)", 50, 1000, Settings.FakeLagMs, function(v)
-            Settings.FakeLagMs = v
-            if Settings.FakeLag then NetworkClient:SetFakeLatency(v / 1000) end
-        end)
-        CreateToggle("Chat Spammer", Settings.ChatSpam, function(v)
-            Settings.ChatSpam = v
-            if v then
-                chatSpamRunning = true
-                task.spawn(function()
-                    while chatSpamRunning and Settings.ChatSpam do
-                        pcall(function()
-                            local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-                            if channel then channel:SendAsync(Settings.SpamMessage) end
-                        end)
-                        pcall(function() Players:Chat(Settings.SpamMessage) end)
-                        task.wait(Settings.SpamInterval)
-                    end
-                end)
-            else chatSpamRunning = false end
-        end)
-        local msgInput = Instance.new("TextBox")
-        msgInput.Size = UDim2.new(1, -10, 0, 48)
-        msgInput.PlaceholderText = "Spam message..."
-        msgInput.Text = Settings.SpamMessage
-        msgInput.Font = Enum.Font.GothamSemibold
-        msgInput.TextSize = 18
-        msgInput.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-        msgInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        msgInput.BorderSizePixel = 0
-        msgInput.Parent = ContentScroll
-        msgInput.FocusLost:Connect(function() Settings.SpamMessage = msgInput.Text end)
-        CreateSlider("Spam Interval", 1, 10, Settings.SpamInterval, function(v) Settings.SpamInterval = v end)
-
-    elseif tabIndex == 6 then    -- Anti-Ban
-        CreateToggle("Anti-Kick", Settings.AntiKick, function(v) Settings.AntiKick = v end)
-        CreateToggle("Anti-Report", Settings.AntiReport, function(v) Settings.AntiReport = v end)
-        CreateToggle("Anti-Cheat Bypass", Settings.AntiCheatBypass, function(v)
-            Settings.AntiCheatBypass = v
-            if v then removeAntiCheat() end
-        end)
-    end
-
-    -- Cập nhật CanvasSize
-    local totalHeight = 0
-    for _, child in ipairs(ContentScroll:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("TextBox") or child:IsA("ScrollingFrame") then
-            totalHeight = totalHeight + child.Size.Y.Offset + 6
-        end
-    end
-    ContentScroll.CanvasSize = UDim2.new(0, 0, 0, totalHeight + 10)
-end
-
--- Tạo tab buttons
-for i, name in ipairs(Tabs) do
+local function CreateButton(parent, text, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1/#Tabs, -4, 1, -2)
-    btn.Position = UDim2.new((i-1)/#Tabs, 2, 0, 1)
-    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-    btn.BorderSizePixel = 0
-    btn.Text = name
+    btn.Size = UDim2.new(1, -20, 0, 42)
+    btn.Position = UDim2.new(0, 10, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    btn.BorderSizePixel = 1
+    btn.BorderColor3 = Color3.fromRGB(50, 50, 60)
+    btn.Text = text
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 16
-    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    btn.Parent = TabButtons
-    TabBtns[i] = btn
-
-    btn.MouseButton1Click:Connect(function()
-        for j, b in ipairs(TabBtns) do b.BackgroundColor3 = Color3.fromRGB(50, 50, 65) end
-        btn.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
-        currentTab = i
-        BuildTab(i)
-    end)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.Parent = parent
+    btn.MouseButton1Click:Connect(callback)
+    return btn
 end
 
--- Kích hoạt tab đầu
-TabBtns[1].BackgroundColor3 = Color3.fromRGB(70, 130, 200)
-BuildTab(1)
+local function arrange(container)
+    local yPos = 5
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("Frame") or child:IsA("TextButton") then
+            child.Position = UDim2.new(0, 0, 0, yPos)
+            yPos = yPos + child.Size.Y.Offset + 4
+        end
+    end
+end
 
--- ===================== DI CHUYỂN MENU =====================
+-- ===================== TẠO UI CHÍNH =====================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FPS_God_ZeroHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local viewport = Camera.ViewportSize
+local scaleFactor = math.min(viewport.X / 450, viewport.Y / 700)
+local UIScale = Instance.new("UIScale")
+UIScale.Scale = scaleFactor
+UIScale.Parent = ScreenGui
+
+-- Main container (có thể kéo)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 720, 0, 540)
+MainFrame.Position = UDim2.new(0.5, -360, 0.5, -270)
+MainFrame.BackgroundColor3 = Color3.fromRGB(17, 17, 24)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+
+-- Title bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 32)
+TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
+
+local TitleText = Instance.new("TextLabel")
+TitleText.Size = UDim2.new(0.8, 0, 1, 0)
+TitleText.Position = UDim2.new(0, 10, 0, 0)
+TitleText.BackgroundTransparency = 1
+TitleText.Text = "FPS GOD  |  ZeroHub Style"
+TitleText.Font = Enum.Font.GothamBold
+TitleText.TextSize = 16
+TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.Parent = TitleBar
+
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 28, 0, 28)
+MinimizeBtn.Position = UDim2.new(1, -32, 0, 2)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+MinimizeBtn.BorderSizePixel = 0
+MinimizeBtn.Text = "━"
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.TextSize = 18
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.Parent = TitleBar
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(1, 0)
+
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Size = UDim2.new(0, 48, 0, 48)
+OpenBtn.Position = UDim2.new(0.5, -24, 0.5, -24)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(0, 176, 255)
+OpenBtn.BorderSizePixel = 0
+OpenBtn.Text = "⚡"
+OpenBtn.Font = Enum.Font.GothamBold
+OpenBtn.TextSize = 24
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.Visible = false
+OpenBtn.Parent = ScreenGui
+Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(1, 0)
+
+-- ===================== KÉO & RESIZE =====================
 local dragging, dragStart, startPos = false
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -601,24 +354,6 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
-local openDragging, openDragStart, openStartPos = false
-OpenBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        openDragging = true
-        openDragStart = input.Position
-        openStartPos = OpenBtn.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then openDragging = false end
-        end)
-    end
-end)
-UIS.InputChanged:Connect(function(input)
-    if openDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - openDragStart
-        OpenBtn.Position = UDim2.new(openStartPos.X.Scale, openStartPos.X.Offset + delta.X / UIScale.Scale, openStartPos.Y.Scale, openStartPos.Y.Offset + delta.Y / UIScale.Scale)
-    end
-end)
-
 MinimizeBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
     OpenBtn.Visible = true
@@ -630,134 +365,303 @@ OpenBtn.MouseButton1Click:Connect(function()
     OpenBtn.Visible = false
 end)
 
--- ===================== DRAWING OBJECTS =====================
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Visible = false
-FOVCircle.Thickness = 2
-FOVCircle.Transparency = 0.8
-FOVCircle.Color = Color3.fromRGB(255, 0, 0)
-FOVCircle.Radius = 100
-FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-FOVCircle.Filled = false
+-- ===================== SIDEBAR =====================
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 180, 1, -32)
+Sidebar.Position = UDim2.new(0, 0, 0, 32)
+Sidebar.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
 
-local function createDrawing(type, props)
-    local d = Drawing.new(type)
-    for k, v in pairs(props) do d[k] = v end
-    return d
+local SidebarScroll = Instance.new("ScrollingFrame")
+SidebarScroll.Size = UDim2.new(1, 0, 1, 0)
+SidebarScroll.BackgroundTransparency = 1
+SidebarScroll.ScrollBarThickness = 4
+SidebarScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+SidebarScroll.Parent = Sidebar
+
+-- Danh sách tab với icon và text
+local TabList = {
+    {name = "Combat", icon = "⚔️"},
+    {name = "Visual", icon = "👁️"},
+    {name = "Misc", icon = "🛠️"},
+    {name = "Teleport", icon = "🌐"},
+    {name = "Troll", icon = "🎭"},
+    {name = "Anti-Ban", icon = "🛡️"}
+}
+
+local TabButtons = {}
+local TabFrames = {}
+local TabContent = {}
+
+local yPos = 5
+for i, tab in ipairs(TabList) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 48)
+    btn.Position = UDim2.new(0, 5, 0, yPos)
+    btn.BackgroundColor3 = (i == 1) and Color3.fromRGB(0, 80, 160) or Color3.fromRGB(30, 30, 40)
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.Parent = SidebarScroll
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    local icon = Instance.new("TextLabel")
+    icon.Size = UDim2.new(0, 30, 1, 0)
+    icon.BackgroundTransparency = 1
+    icon.Text = tab.icon
+    icon.Font = Enum.Font.GothamBold
+    icon.TextSize = 18
+    icon.TextColor3 = Color3.fromRGB(255, 255, 255)
+    icon.TextXAlignment = Enum.TextXAlignment.Center
+    icon.Parent = btn
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -35, 1, 0)
+    label.Position = UDim2.new(0, 32, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = tab.name
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 14
+    label.TextColor3 = Color3.fromRGB(220, 220, 220)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = btn
+
+    TabButtons[i] = btn
+    yPos = yPos + 52
+end
+SidebarScroll.CanvasSize = UDim2.new(0, 0, 0, yPos + 10)
+
+-- ===================== MAIN CONTENT =====================
+local ContentPanel = Instance.new("Frame")
+ContentPanel.Size = UDim2.new(1, -180, 1, -32)
+ContentPanel.Position = UDim2.new(0, 180, 0, 32)
+ContentPanel.BackgroundColor3 = Color3.fromRGB(17, 17, 24)
+ContentPanel.BorderSizePixel = 0
+ContentPanel.Parent = MainFrame
+
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Size = UDim2.new(1, 0, 1, 0)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.ScrollBarThickness = 6
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.Parent = ContentPanel
+
+-- Tạo nội dung cho từng tab
+for i, tab in ipairs(TabList) do
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.Visible = (i == 1)
+    frame.Parent = ContentScroll
+    TabFrames[i] = frame
 end
 
-local function removePlayerEsp(player)
-    local cache = espCache[player]
-    if cache then
-        for _, d in pairs(cache) do if d then d:Remove() end end
-        espCache[player] = nil
-    end
+-- Nút chọn tab
+for i, btn in ipairs(TabButtons) do
+    btn.MouseButton1Click:Connect(function()
+        for j, b in ipairs(TabButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+            TabFrames[j].Visible = false
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(0, 80, 160)
+        TabFrames[i].Visible = true
+        -- Cuộn lên đầu content
+        ContentScroll.CanvasPosition = Vector2.new(0, 0)
+    end)
 end
 
-local function updatePlayerEsp(player, character)
-    local cache = espCache[player]
-    if not cache then
-        cache = {}
-        if Settings.BoxESP then
-            cache.box = createDrawing("Square", {Visible=false, Color=Color3.fromRGB(255,255,255), Thickness=2, Transparency=0.5})
-        end
-        if Settings.NameESP then
-            cache.name = createDrawing("Text", {Visible=false, Color=Color3.fromRGB(255,255,255), Size=16, Center=true, Outline=true, OutlineColor=Color3.fromRGB(0,0,0)})
-        end
-        if Settings.DistESP then
-            cache.dist = createDrawing("Text", {Visible=false, Color=Color3.fromRGB(200,200,200), Size=14, Center=true, Outline=true, OutlineColor=Color3.fromRGB(0,0,0)})
-        end
-        if Settings.HealthESP then
-            cache.healthBar = createDrawing("Line", {Visible=false, Color=Color3.fromRGB(0,255,0), Thickness=4, Transparency=0.7})
-            cache.healthBg = createDrawing("Line", {Visible=false, Color=Color3.fromRGB(40,40,40), Thickness=4, Transparency=0.7})
-        end
-        espCache[player] = cache
-    end
+-- ===================== TẠO NỘI DUNG TABS =====================
+-- Combat Tab
+local combatFrame = TabFrames[1]
+CreateSwitch(combatFrame, "Aimbot", false, function(v) Settings.Aimbot = v end)
+CreateSlider(combatFrame, "Smooth", 1, 20, 10, function(v) Settings.AimbotSmooth = v end)
+CreateSwitch(combatFrame, "Show FOV", false, function(v) Settings.ShowFOV = v end)
+CreateSlider(combatFrame, "FOV Size", 10, 800, 100, function(v) Settings.FOVSize = v end)
 
-    local head = character and character:FindFirstChild("Head")
-    local hum = character and character:FindFirstChild("Humanoid")
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not head or not hum or hum.Health <= 0 then
-        for _, d in pairs(cache) do if d then d.Visible = false end end
-        return
-    end
-
-    local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-    if not onScreen then
-        for _, d in pairs(cache) do if d then d.Visible = false end end
-        return
-    end
-
-    local rootPos = root and root.Position or head.Position
-    local rootScreen = Camera:WorldToViewportPoint(rootPos)
-    local distance = (Camera.CFrame.Position - rootPos).Magnitude
-    local yMin = headPos.Y
-    local yMax = rootScreen.Y
-    local xMin = headPos.X - (yMax - yMin)/4
-    local xMax = headPos.X + (yMax - yMin)/4
-
-    if cache.box then
-        cache.box.Visible = Settings.BoxESP
-        if Settings.BoxESP then
-            cache.box.Size = Vector2.new(xMax - xMin, yMax - yMin)
-            cache.box.Position = Vector2.new(xMin, yMin)
-        end
-    end
-    if cache.name then
-        cache.name.Visible = Settings.NameESP
-        if Settings.NameESP then
-            cache.name.Text = player.Name
-            cache.name.Position = Vector2.new(xMin + (xMax-xMin)/2, yMin - 20)
-        end
-    end
-    if cache.dist then
-        cache.dist.Visible = Settings.DistESP
-        if Settings.DistESP then
-            cache.dist.Text = math.floor(distance).."m"
-            cache.dist.Position = Vector2.new(xMin + (xMax-xMin)/2, yMax + 4)
-        end
-    end
-    if cache.healthBar and cache.healthBg then
-        cache.healthBar.Visible = Settings.HealthESP
-        cache.healthBg.Visible = Settings.HealthESP
-        if Settings.HealthESP then
-            local health = hum.Health / hum.MaxHealth
-            local barW = 5
-            local barX = xMin - barW - 3
-            local barY = yMin
-            local barH = yMax - yMin
-            cache.healthBar.From = Vector2.new(barX, barY + barH)
-            cache.healthBar.To = Vector2.new(barX, barY + barH * (1 - health))
-            cache.healthBg.From = Vector2.new(barX, barY)
-            cache.healthBg.To = Vector2.new(barX, barY + barH)
-        end
-    end
-end
-
--- ===================== WALLHACK =====================
-local function UpdateHighlight(player)
-    local char = player.Character
-    local hum = char and char:FindFirstChild("Humanoid")
-    if Settings.Wallhack and hum and hum.Health > 0 then
-        if not highlightCache[player] then
-            local hl = Instance.new("Highlight")
-            hl.Name = "Chams"
-            hl.FillColor = Color3.fromRGB(255, 100, 0)
-            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-            hl.FillTransparency = 0.3
-            hl.OutlineTransparency = 0
-            hl.Enabled = true
-            hl.Adornee = char
-            hl.Parent = char
-            highlightCache[player] = hl
-        end
+local fovColorBtn = Instance.new("TextButton")
+fovColorBtn.Size = UDim2.new(1, -20, 0, 42)
+fovColorBtn.Position = UDim2.new(0, 10, 0, 0)
+fovColorBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+fovColorBtn.BorderSizePixel = 1
+fovColorBtn.BorderColor3 = Color3.fromRGB(50, 50, 60)
+fovColorBtn.Text = "FOV Color: Red"
+fovColorBtn.Font = Enum.Font.GothamBold
+fovColorBtn.TextSize = 16
+fovColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+Instance.new("UICorner", fovColorBtn).CornerRadius = UDim.new(0, 6)
+fovColorBtn.Parent = combatFrame
+fovColorBtn.MouseButton1Click:Connect(function()
+    if Settings.FOVColor == "Red" then
+        Settings.FOVColor = "Green"
+        fovColorBtn.Text = "FOV Color: Green"
     else
-        local hl = highlightCache[player]
-        if hl then hl:Destroy(); highlightCache[player] = nil end
+        Settings.FOVColor = "Red"
+        fovColorBtn.Text = "FOV Color: Red"
     end
-end
+end)
 
--- ===================== AIMBOT, SILENT AIM, TRIGGER =====================
+CreateSwitch(combatFrame, "Silent Aim", false, function(v) Settings.SilentAim = v; SetupSilentAim(v) end)
+CreateSwitch(combatFrame, "Trigger Bot", false, function(v) Settings.TriggerBot = v end)
+
+-- Visual Tab
+local visualFrame = TabFrames[2]
+CreateSwitch(visualFrame, "Box ESP", false, function(v) Settings.BoxESP = v end)
+CreateSwitch(visualFrame, "Name ESP", false, function(v) Settings.NameESP = v end)
+CreateSwitch(visualFrame, "Distance ESP", false, function(v) Settings.DistESP = v end)
+CreateSwitch(visualFrame, "Health ESP", false, function(v) Settings.HealthESP = v end)
+CreateSwitch(visualFrame, "Wallhack (Chams)", false, function(v)
+    Settings.Wallhack = v
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then UpdateHighlight(player) end
+    end
+end)
+
+-- Misc Tab
+local miscFrame = TabFrames[3]
+CreateSwitch(miscFrame, "Infinite Ammo", false, function(v) Settings.InfAmmo = v end)
+CreateSwitch(miscFrame, "No Recoil", false, function(v) Settings.NoRecoil = v end)
+CreateSwitch(miscFrame, "Fast Fire", false, function(v) Settings.FastFire = v end)
+CreateSwitch(miscFrame, "Speed Hack", false, function(v)
+    Settings.SpeedHack = v
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if hum then hum.WalkSpeed = v and Settings.SpeedValue or 16 end
+end)
+CreateSlider(miscFrame, "Speed Value", 24, 200, 32, function(v)
+    Settings.SpeedValue = v
+    if Settings.SpeedHack and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = v
+    end
+end)
+CreateSwitch(miscFrame, "Fly", false, function(v)
+    Settings.Fly = v
+    ToggleFly(v)
+end)
+CreateSlider(miscFrame, "Fly Speed", 30, 200, 50, function(v) Settings.FlySpeed = v end)
+CreateSwitch(miscFrame, "High Jump", false, function(v)
+    Settings.HighJump = v
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if hum then hum.JumpPower = v and Settings.JumpPower or 50 end
+end)
+CreateSlider(miscFrame, "Jump Height", 50, 500, 100, function(v)
+    Settings.JumpPower = v
+    if Settings.HighJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.JumpPower = v
+    end
+end)
+CreateSwitch(miscFrame, "Noclip", false, function(v)
+    Settings.Noclip = v
+    ToggleNoclip(v)
+end)
+
+-- Teleport Tab
+local teleportFrame = TabFrames[4]
+local playerListFrame = Instance.new("ScrollingFrame")
+playerListFrame.Size = UDim2.new(1, -10, 1, -10)
+playerListFrame.Position = UDim2.new(0, 5, 0, 5)
+playerListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+playerListFrame.ScrollBarThickness = 8
+playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+playerListFrame.Parent = teleportFrame
+
+local function updatePlayerList()
+    for _, child in ipairs(playerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    local yPos = 5
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -10, 0, 40)
+        btn.Position = UDim2.new(0, 5, 0, yPos)
+        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+        btn.Text = player.Name
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 16
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        btn.Parent = playerListFrame
+        btn.MouseButton1Click:Connect(function()
+            local myChar = LocalPlayer.Character
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local targetChar = player.Character
+            local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+            if myRoot and targetRoot then
+                myRoot.CFrame = targetRoot.CFrame + Vector3.new(0, 2, 0)
+            end
+        end)
+        yPos = yPos + 44
+    end
+    playerListFrame.CanvasSize = UDim2.new(0, 0, 0, yPos + 10)
+end
+updatePlayerList()
+Players.PlayerAdded:Connect(updatePlayerList)
+Players.PlayerRemoving:Connect(updatePlayerList)
+
+-- Troll Tab
+local trollFrame = TabFrames[5]
+CreateSwitch(trollFrame, "Fake Lag", false, function(v)
+    Settings.FakeLag = v
+    if v then
+        NetworkClient:SetFakeLatency(Settings.FakeLagMs / 1000)
+    else
+        NetworkClient:SetFakeLatency(0)
+    end
+end)
+CreateSlider(trollFrame, "Lag (ms)", 50, 1000, 200, function(v)
+    Settings.FakeLagMs = v
+    if Settings.FakeLag then NetworkClient:SetFakeLatency(v / 1000) end
+end)
+
+CreateSwitch(trollFrame, "Chat Spammer", false, function(v)
+    Settings.ChatSpam = v
+    if v then
+        chatSpamRunning = true
+        task.spawn(function()
+            while chatSpamRunning and Settings.ChatSpam do
+                pcall(function()
+                    local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+                    if channel then channel:SendAsync(Settings.SpamMessage) end
+                end)
+                pcall(function() Players:Chat(Settings.SpamMessage) end)
+                task.wait(Settings.SpamInterval)
+            end
+        end)
+    else
+        chatSpamRunning = false
+    end
+end)
+
+local msgInput = Instance.new("TextBox")
+msgInput.Size = UDim2.new(1, -20, 0, 40)
+msgInput.Position = UDim2.new(0, 10, 0, 0)
+msgInput.PlaceholderText = "Spam message..."
+msgInput.Text = Settings.SpamMessage
+msgInput.Font = Enum.Font.GothamBold
+msgInput.TextSize = 16
+msgInput.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+msgInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+msgInput.BorderSizePixel = 0
+Instance.new("UICorner", msgInput).CornerRadius = UDim.new(0, 6)
+msgInput.Parent = trollFrame
+msgInput.FocusLost:Connect(function() Settings.SpamMessage = msgInput.Text end)
+CreateSlider(trollFrame, "Spam Interval", 1, 10, 3, function(v) Settings.SpamInterval = v end)
+
+-- Anti-Ban Tab
+local antiBanFrame = TabFrames[6]
+CreateSwitch(antiBanFrame, "Anti-Kick", false, function(v) Settings.AntiKick = v end)
+CreateSwitch(antiBanFrame, "Anti-Report", false, function(v) Settings.AntiReport = v end)
+CreateSwitch(antiBanFrame, "Anti-Cheat Bypass", false, function(v)
+    Settings.AntiCheatBypass = v
+    if v then removeAntiCheat() end
+end)
+
+-- Sắp xếp nội dung các tab
+for _, f in ipairs(TabFrames) do arrange(f) end
+
+-- ===================== CHỨC NĂNG (GIỮ NGUYÊN) =====================
+-- Các hàm hỗ trợ, hooks, v.v. đã được định nghĩa từ đầu.
+-- Chỉ cần bổ sung các hàm đã được gọi trong UI.
+
 local function FindRemote()
     local char = LocalPlayer.Character
     if char then
@@ -887,7 +791,7 @@ local function HandleWeaponMods()
     end
 end
 
-local function HandleFly()
+local function HandleFly(dt)
     if not Settings.Fly then return end
     local char = LocalPlayer.Character
     if not char then return end
@@ -908,18 +812,132 @@ local function HandleFly()
     bg.CFrame = Camera.CFrame
 end
 
--- ===================== MAIN LOOP =====================
-local lastEspUpdate = 0
-local espUpdateInterval = 0.05
+local function UpdateHighlight(player)
+    local char = player.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if Settings.Wallhack and hum and hum.Health > 0 then
+        if not highlightCache[player] then
+            local hl = Instance.new("Highlight")
+            hl.Name = "Chams"
+            hl.FillColor = Color3.fromRGB(255, 100, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.3
+            hl.OutlineTransparency = 0
+            hl.Enabled = true
+            hl.Adornee = char
+            hl.Parent = char
+            highlightCache[player] = hl
+        end
+    else
+        local hl = highlightCache[player]
+        if hl then hl:Destroy(); highlightCache[player] = nil end
+    end
+end
 
-RunService.RenderStepped:Connect(function(dt)
-    FOVCircle.Visible = Settings.ShowFOV or Settings.Aimbot or Settings.SilentAim
-    if FOVCircle.Visible then
-        FOVCircle.Radius = Settings.FOVSize
-        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-        FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = false
+FOVCircle.Thickness = 2
+FOVCircle.Transparency = 0.8
+FOVCircle.Color = Color3.fromRGB(255, 0, 0)
+FOVCircle.Radius = 100
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+FOVCircle.Filled = false
+
+local function createDrawing(type, properties)
+    local d = Drawing.new(type)
+    for k, v in pairs(properties) do d[k] = v end
+    return d
+end
+
+local function removePlayerEsp(player)
+    local cache = espCache[player]
+    if cache then
+        for _, d in pairs(cache) do if d then d:Remove() end end
+        espCache[player] = nil
+    end
+end
+
+local function updatePlayerEsp(player, character)
+    local cache = espCache[player]
+    if not cache then
+        cache = {}
+        if Settings.BoxESP then
+            cache.box = createDrawing("Square", {Visible=false, Color=Color3.fromRGB(255,255,255), Thickness=2, Transparency=0.5})
+        end
+        if Settings.NameESP then
+            cache.name = createDrawing("Text", {Visible=false, Color=Color3.fromRGB(255,255,255), Size=14, Center=true, Outline=true, OutlineColor=Color3.fromRGB(0,0,0)})
+        end
+        if Settings.DistESP then
+            cache.dist = createDrawing("Text", {Visible=false, Color=Color3.fromRGB(200,200,200), Size=13, Center=true, Outline=true, OutlineColor=Color3.fromRGB(0,0,0)})
+        end
+        if Settings.HealthESP then
+            cache.healthBar = createDrawing("Line", {Visible=false, Color=Color3.fromRGB(0,255,0), Thickness=4, Transparency=0.7})
+            cache.healthBg = createDrawing("Line", {Visible=false, Color=Color3.fromRGB(40,40,40), Thickness=4, Transparency=0.7})
+        end
+        espCache[player] = cache
     end
 
+    local head = character and character:FindFirstChild("Head")
+    local hum = character and character:FindFirstChild("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not head or not hum or hum.Health <= 0 then
+        for _, d in pairs(cache) do if d then d.Visible = false end end
+        return
+    end
+
+    local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+    if not onScreen then
+        for _, d in pairs(cache) do if d then d.Visible = false end end
+        return
+    end
+
+    local rootPos = root and root.Position or head.Position
+    local rootScreen = Camera:WorldToViewportPoint(rootPos)
+    local distance = (Camera.CFrame.Position - rootPos).Magnitude
+    local yMin = headPos.Y
+    local yMax = rootScreen.Y
+    local xMin = headPos.X - (yMax - yMin)/4
+    local xMax = headPos.X + (yMax - yMin)/4
+
+    if cache.box then
+        cache.box.Visible = Settings.BoxESP
+        cache.box.Size = Vector2.new(xMax - xMin, yMax - yMin)
+        cache.box.Position = Vector2.new(xMin, yMin)
+    end
+    if cache.name then
+        cache.name.Visible = Settings.NameESP
+        cache.name.Text = player.Name
+        cache.name.Position = Vector2.new(xMin + (xMax-xMin)/2, yMin - 18)
+    end
+    if cache.dist then
+        cache.dist.Visible = Settings.DistESP
+        cache.dist.Text = math.floor(distance).."m"
+        cache.dist.Position = Vector2.new(xMin + (xMax-xMin)/2, yMax + 2)
+    end
+    if cache.healthBar and cache.healthBg then
+        cache.healthBar.Visible = Settings.HealthESP
+        cache.healthBg.Visible = Settings.HealthESP
+        local health = hum.Health / hum.MaxHealth
+        local barW = 4
+        local barX = xMin - barW - 2
+        local barY = yMin
+        local barH = yMax - yMin
+        cache.healthBar.From = Vector2.new(barX, barY + barH)
+        cache.healthBar.To = Vector2.new(barX, barY + barH * (1 - health))
+        cache.healthBg.From = Vector2.new(barX, barY)
+        cache.healthBg.To = Vector2.new(barX, barY + barH)
+    end
+end
+
+-- ===================== VÒNG LẶP CHÍNH =====================
+RunService.RenderStepped:Connect(function(dt)
+    -- FOV Circle
+    FOVCircle.Visible = Settings.ShowFOV or Settings.Aimbot or Settings.SilentAim
+    FOVCircle.Radius = Settings.FOVSize
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
+
+    -- Aimbot
     if Settings.Aimbot then
         local target = GetClosestVisibleEnemy()
         AimTarget = target
@@ -937,6 +955,7 @@ RunService.RenderStepped:Connect(function(dt)
         AimTarget = nil
     end
 
+    -- Trigger Bot
     if Settings.TriggerBot and tick() - lastTriggerTime >= 0.2 then
         lastTriggerTime = tick()
         local char = LocalPlayer.Character
@@ -954,21 +973,19 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    if tick() - lastEspUpdate >= espUpdateInterval then
-        lastEspUpdate = tick()
-        local activePlayers = {}
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                activePlayers[player] = true
-                updatePlayerEsp(player, player.Character)
-            end
+    -- ESP + Wallhack
+    local activePlayers = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            activePlayers[player] = true
+            updatePlayerEsp(player, player.Character)
         end
-        for player, _ in pairs(espCache) do
-            if not activePlayers[player] then removePlayerEsp(player) end
-        end
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then UpdateHighlight(player) end
-        end
+    end
+    for player, _ in pairs(espCache) do
+        if not activePlayers[player] then removePlayerEsp(player) end
+    end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then UpdateHighlight(player) end
     end
 end)
 
@@ -995,15 +1012,12 @@ UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then firing = false end
 end)
 
--- ===================== SỰ KIỆN NHÂN VẬT =====================
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     SetupSilentAim(Settings.SilentAim)
     if Settings.Fly then
         Settings.Fly = false
-        task.wait(0.1)
         Settings.Fly = true
-        ToggleFly(true)
     end
     if Settings.Noclip then ToggleNoclip(true) end
     local hum = char:WaitForChild("Humanoid", 2)
@@ -1024,4 +1038,5 @@ end
 
 if Settings.AntiCheatBypass then removeAntiCheat() end
 
-print("[FPS GOD MENU v17] Đã load! Kéo góc dưới phải để resize menu.")
+print("[FPS GOD MENU v15] ZeroHub UI loaded successfully!")
+```
