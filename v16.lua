@@ -1,10 +1,11 @@
 --[[
-    FPS GOD MENU v15 ULTIMATE – TOANDINH STYLE UI (ĐẦY ĐỦ TÍNH NĂNG)
-    - Đã thêm: Hitbox Expander, Auto Headshot, Rapid Fire + Bullet Tracer, Cam Lock,
-      Remove Fall Damage, Auto Farm Kill, Server Hop, Spin Bot, Fake Death,
-      Rainbow ESP, Kill Aura, Anti-Mod, Memory Editor, Sit on Head,
-      Fake Lag Switch cường độ mạnh, Stat Changer, Godmode.
-    - Tối ưu Anti‑Cheat Bypass cực mạnh, giữ giao diện đẹp, nút to, chạy mượt mobile.
+    FPS GOD MENU v16 ULTIMATE – TOANDINH STYLE UI (FIXED FOR DELTA)
+    - Đã loại bỏ hookmetamethod gây lỗi (thay bằng set trực tiếp an toàn)
+    - Gộp các vòng lặp vào RenderStepped/Heartbeat để giảm tải
+    - Thêm pcall bao bọc các hàm nhạy cảm
+    - Giảm tần suất cập nhật ESP và Kill Aura
+    - Bỏ HttpService để tránh lag khi tải server
+    - Mặc định tắt tất cả tính năng nặng để menu hiện ngay
 ]]
 
 -- ==================== DỊCH VỤ ====================
@@ -19,10 +20,8 @@ local TeleportService = game:GetService("TeleportService")
 local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
-local HttpService = game:GetService("HttpService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- ==================== CẤU HÌNH ====================
+-- ==================== CẤU HÌNH (MẶC ĐỊNH TẮT HẾT) ====================
 local Settings = {
     -- Combat
     Aimbot = false,
@@ -73,7 +72,7 @@ local Settings = {
     FakeLag = false,
     FakeLagIntensity = 100,
     ChatSpam = false,
-    SpamMessage = "FPS GOD v15",
+    SpamMessage = "FPS GOD v16",
     SpamInterval = 3,
     SitOnHead = false,
     SitTarget = "",
@@ -99,14 +98,15 @@ local lastWeaponCheck = 0
 local espCache = {}
 local highlightCache = {}
 local chatSpamRunning = false
-local killAuraTargets = {}
-local autoFarmLoop = nil
-local spinLoop = nil
-local camLockLoop = nil
-local godmodeConnection = nil
 local tracerTable = {}
 local rainbowHue = 0
+local sitTargetChar = nil
+local sitConnection = nil
+local spinVel = nil
+local lastESPUpdate = 0
+local lastKillAuraUpdate = 0
 
+-- Kiểm tra Drawing API
 local DrawingSupported = pcall(function() local test = Drawing.new("Circle"); test:Remove() end)
 if not DrawingSupported then
     Settings.ShowFOV = false
@@ -118,7 +118,7 @@ if not DrawingSupported then
     Settings.BulletTracer = false
 end
 
--- ===================== ANTI-BAN HOOKS NÂNG CAO =====================
+-- ===================== ANTI-BAN (CHỈ DÙNG HOOKFUNCTION, KHÔNG DÙNG METAMETHOD) =====================
 local function hookPlayer(player)
     pcall(function()
         if player ~= LocalPlayer and not player.AntiBanHooked then
@@ -126,13 +126,11 @@ local function hookPlayer(player)
                 if Settings.AntiReport then return nil end
                 return oldReport(...)
             end)
-            player.AntiBanHooked = true
-
-            -- Hook thêm các phương thức kick khác
-            local oldKick2 = hookfunction(player.Kick, function(...)
+            local oldKick = hookfunction(player.Kick, function(...)
                 if Settings.AntiKick then return nil end
-                return oldKick2(...)
+                return oldKick(...)
             end)
+            player.AntiBanHooked = true
         end
     end)
 end
@@ -159,54 +157,21 @@ local function removeAntiCheat()
     end
 end
 
--- Thực hiện liên tục
 task.spawn(function()
     while task.wait(15) do
         if Settings.AntiCheatBypass then removeAntiCheat() end
     end
 end)
 
--- Bypass namecall/index/newindex
-local oldNC
-oldNC = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-    if method == "Kick" and Settings.AntiKick then return nil end
-    if (method == "FireServer" or method == "InvokeServer") and Settings.AntiCheatBypass then
-        -- Có thể thêm logic bypass
-    end
-    return oldNC(self, ...)
+-- Hook Kick của LocalPlayer (nếu chưa)
+pcall(function()
+    local oldKickLocal = hookfunction(LocalPlayer.Kick, function(...)
+        if Settings.AntiKick then return nil end
+        return oldKickLocal(...)
+    end)
 end)
 
-local oldIndex = hookmetamethod(game, "__index", function(t, k)
-    if k == "WalkSpeed" and Settings.SpeedHack and t == LocalPlayer.Character and t:FindFirstChild("Humanoid") then
-        return Settings.SpeedValue
-    end
-    if k == "JumpPower" and Settings.HighJump and t == LocalPlayer.Character and t:FindFirstChild("Humanoid") then
-        return Settings.JumpPower
-    end
-    if k == "Health" and Settings.Godmode and t == LocalPlayer.Character and t:FindFirstChild("Humanoid") then
-        return t.MaxHealth
-    end
-    return oldIndex(t, k)
-end)
-
-local oldNewIndex = hookmetamethod(game, "__newindex", function(t, k, v)
-    if k == "WalkSpeed" and Settings.SpeedHack and t == LocalPlayer.Character and t:FindFirstChild("Humanoid") then
-        return
-    end
-    if k == "JumpPower" and Settings.HighJump and t == LocalPlayer.Character and t:FindFirstChild("Humanoid") then
-        return
-    end
-    if k == "Health" and Settings.Godmode and t == LocalPlayer.Character and t:FindFirstChild("Humanoid") then
-        if v < t.MaxHealth then
-            return
-        end
-    end
-    return oldNewIndex(t, k, v)
-end)
-
--- ===================== UI HELPERS =====================
+-- ===================== UI HELPERS (GIỮ NGUYÊN NHƯ V15) =====================
 local function CreateSwitch(parent, labelText, default, callback)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -20, 0, 40)
@@ -375,9 +340,6 @@ local function CreateDropDown(parent, name, list, default, callback)
     btn.MouseButton1Click:Connect(function()
         isOpen = not isOpen
         for _, child in pairs(dropdown:GetChildren()) do
-            if child:IsA("TextButton") and child ~= btn then child.Visible = isOpen end
-        end
-        for _, child in pairs(dropdown:GetChildren()) do
             if child:IsA("TextButton") and child ~= btn then child:Destroy() end
         end
         if isOpen then
@@ -434,7 +396,7 @@ local function arrange(container)
     end
 end
 
--- ===================== TẠO UI CHÍNH =====================
+-- ===================== TẠO UI CHÍNH (GIỮ NGUYÊN NHƯ V15) =====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "FPS_God_Toandinh_Ultimate"
 ScreenGui.ResetOnSpawn = false
@@ -498,7 +460,7 @@ OpenBtn.Visible = false
 OpenBtn.Parent = ScreenGui
 Instance.new("UICorner", OpenBtn).CornerRadius = UDim.new(1,0)
 
--- kéo mainframe
+-- Kéo mainframe
 local draggingMain, dragStartMain, startPosMain = false, nil, nil
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -528,7 +490,7 @@ OpenBtn.MouseButton1Click:Connect(function()
     OpenBtn.Visible = false
 end)
 
--- kéo nút mở
+-- Kéo nút mở
 local draggingOpen, dragStartOpen, startPosOpen = false, nil, nil
 OpenBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -547,7 +509,7 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
--- sidebar
+-- Sidebar
 local Sidebar = Instance.new("Frame")
 Sidebar.Size = UDim2.new(0, 160, 1, -32)
 Sidebar.Position = UDim2.new(0, 0, 0, 32)
@@ -647,7 +609,7 @@ for i, btn in ipairs(TabButtons) do
     end)
 end
 
--- ===================== NỘI DUNG CÁC TAB =====================
+-- ===================== NỘI DUNG CÁC TAB (GIỮ NGUYÊN) =====================
 -- Combat
 local combatFrame = TabFrames[1]
 CreateSwitch(combatFrame, "Aimbot", false, function(v) Settings.Aimbot = v end)
@@ -662,7 +624,7 @@ fovColorBtn.Size = UDim2.new(1,-20,0,38)
 CreateSwitch(combatFrame, "Silent Aim", false, function(v) Settings.SilentAim = v; SetupSilentAim(v) end)
 CreateSwitch(combatFrame, "Trigger Bot", false, function(v) Settings.TriggerBot = v end)
 CreateSwitch(combatFrame, "Auto Headshot", false, function(v) Settings.AutoHeadshot = v end)
-CreateSwitch(combatFrame, "Kill Aura", false, function(v) Settings.KillAura = v; if v then StartKillAura() end end)
+CreateSwitch(combatFrame, "Kill Aura", false, function(v) Settings.KillAura = v end)
 CreateSlider(combatFrame, "Kill Aura Range", 5,100,20, function(v) Settings.KillAuraRadius = v end)
 
 -- Visual
@@ -708,7 +670,7 @@ CreateSlider(miscFrame, "Jump Height", 50,500,100, function(v)
     end
 end)
 CreateSwitch(miscFrame, "Noclip", false, function(v) Settings.Noclip = v; ToggleNoclip(v) end)
-CreateSwitch(miscFrame, "Remove Fall Damage", false, function(v) Settings.RemoveFallDamage = v end)
+CreateSwitch(miscFrame, "Remove Fall Damage", false, function(v) Settings.RemoveFallDamage = v; HookFallDamage() end)
 CreateSwitch(miscFrame, "Godmode", false, function(v)
     Settings.Godmode = v
     if v then EnableGodmode() else DisableGodmode() end
@@ -725,11 +687,11 @@ CreateSlider(rageFrame, "Hitbox Size", 1.1, 5, 2, function(v)
     if Settings.HitboxExpander then ScaleHitboxes(v) end
 end)
 CreateSwitch(rageFrame, "Rapid Fire", false, function(v) Settings.RapidFire = v end)
-CreateSwitch(rageFrame, "Cam Lock", false, function(v) Settings.CamLock = v; ToggleCamLock(v) end)
+CreateSwitch(rageFrame, "Cam Lock", false, function(v) Settings.CamLock = v end)
 CreateSwitch(rageFrame, "Spin Bot", false, function(v) Settings.SpinBot = v; ToggleSpinBot(v) end)
-CreateSlider(rageFrame, "Spin Speed", 5, 30, 10, function(v) Settings.SpinSpeed = v end)
+CreateSlider(rageFrame, "Spin Speed", 5, 30, 10, function(v) Settings.SpinSpeed = v; if spinVel then spinVel.AngularVelocity = Vector3.new(0, v, 0) end end)
 CreateSwitch(rageFrame, "Fake Death", false, function(v) Settings.FakeDeath = v; ToggleFakeDeath(v) end)
-CreateSwitch(rageFrame, "Auto Farm Kill", false, function(v) Settings.AutoFarmKill = v; ToggleAutoFarm(v) end)
+CreateSwitch(rageFrame, "Auto Farm Kill", false, function(v) Settings.AutoFarmKill = v end)
 
 -- Troll
 local trollFrame = TabFrames[5]
@@ -773,7 +735,6 @@ msgInput.Parent = trollFrame
 msgInput.FocusLost:Connect(function() Settings.SpamMessage = msgInput.Text end)
 CreateSlider(trollFrame, "Spam Interval", 1,10,3, function(v) Settings.SpamInterval = v end)
 CreateSwitch(trollFrame, "Sit on Head", false, function(v) Settings.SitOnHead = v; if not v and sitTargetChar then UnSitOnHead() end end)
--- Tạo dropdown chọn player để ngồi lên đầu
 local allPlayers = {}
 for _, p in ipairs(Players:GetPlayers()) do if p~=LocalPlayer then table.insert(allPlayers, p.Name) end end
 if #allPlayers == 0 then table.insert(allPlayers, "None") end
@@ -821,17 +782,9 @@ Players.PlayerAdded:Connect(refreshTeleportList)
 Players.PlayerRemoving:Connect(refreshTeleportList)
 
 CreateButton(teleportFrame, "Server Hop (Fast)", function()
-    local servers = {}
-    pcall(function() servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=10")) end)
-    if servers and servers.data then
-        for _, server in ipairs(servers.data) do
-            if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
-                return
-            end
-        end
-    end
-    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+    pcall(function()
+        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+    end)
 end)
 
 -- Stats
@@ -860,11 +813,10 @@ warningLabel.TextColor3 = Color3.fromRGB(255,255,100)
 warningLabel.Parent = antiBanFrame
 CreateButton(antiBanFrame, "Refresh Anti-Mod", function() warningLabel.Text = DetectHackers() end)
 
--- sắp xếp lại
 for _, f in ipairs(TabFrames) do arrange(f) end
 
--- ===================== CHỨC NĂNG CHI TIẾT =====================
--- Tìm RemoteEvent
+-- ===================== CHỨC NĂNG CHI TIẾT (ĐÃ TỐI ƯU) =====================
+-- Tìm RemoteEvent (giữ nguyên)
 function FindRemote()
     for _, tool in ipairs(LocalPlayer.Character and LocalPlayer.Character:GetChildren() or {}) do
         if tool:IsA("Tool") then for _, v in tool:GetDescendants() do if v:IsA("RemoteEvent") then return v end end end
@@ -924,6 +876,60 @@ function GetClosestVisibleEnemy()
     return nearest
 end
 
+-- ToggleFly, ToggleNoclip, HandleFly (giữ nguyên từ v15)
+function ToggleFly(enable)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if enable then
+        local bv = Instance.new("BodyVelocity")
+        bv.Name = "FlyBV"
+        bv.Velocity = Vector3.zero
+        bv.MaxForce = Vector3.new(400000, 400000, 400000)
+        bv.Parent = hrp
+        local bg = Instance.new("BodyGyro")
+        bg.Name = "FlyBG"
+        bg.CFrame = hrp.CFrame
+        bg.MaxTorque = Vector3.new(400000, 400000, 400000)
+        bg.Parent = hrp
+        if char:FindFirstChild("Humanoid") then char.Humanoid.PlatformStand = true end
+    else
+        if hrp:FindFirstChild("FlyBV") then hrp.FlyBV:Destroy() end
+        if hrp:FindFirstChild("FlyBG") then hrp.FlyBG:Destroy() end
+        if char:FindFirstChild("Humanoid") then char.Humanoid.PlatformStand = false end
+    end
+end
+
+function ToggleNoclip(enable)
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = not enable end
+    end
+end
+
+function HandleFly()
+    if not Settings.Fly then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChild("Humanoid")
+    if not hrp or not hum then return end
+    local bv = hrp:FindFirstChild("FlyBV")
+    local bg = hrp:FindFirstChild("FlyBG")
+    if not bv or not bg then return end
+    local moveDir = hum.MoveDirection
+    if moveDir.Magnitude > 0.1 then
+        local camCF = Camera.CFrame
+        local localMove = camCF:VectorToObjectSpace(moveDir)
+        bv.Velocity = (camCF.LookVector * (-localMove.Z) + camCF.RightVector * localMove.X) * Settings.FlySpeed
+    else
+        bv.Velocity = Vector3.zero
+    end
+    bg.CFrame = Camera.CFrame
+end
+
 -- Hitbox Expander
 function ScaleHitboxes(size)
     for _, player in ipairs(Players:GetPlayers()) do
@@ -940,12 +946,14 @@ end
 function HookFallDamage()
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
     if hum then
-        hum.FallDamageEnabled = false -- không phải lúc nào cũng hỗ trợ
-        local oldTakeDamage = hum.TakeDamage
-        hum.TakeDamage = function(self, amount)
-            if Settings.RemoveFallDamage and amount > 0 and amount < 50 then return end
-            return oldTakeDamage(self, amount)
-        end
+        pcall(function()
+            hum.FallDamageEnabled = false
+            local oldTakeDamage = hum.TakeDamage
+            hum.TakeDamage = function(self, amount)
+                if Settings.RemoveFallDamage and amount > 0 and amount < 50 then return end
+                return oldTakeDamage(self, amount)
+            end
+        end)
     end
 end
 
@@ -955,6 +963,7 @@ function EnableGodmode()
     if char then
         local hum = char:FindFirstChild("Humanoid")
         if hum then
+            if godmodeConnection then godmodeConnection:Disconnect() end
             godmodeConnection = hum.HealthChanged:Connect(function()
                 if hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
             end)
@@ -966,34 +975,7 @@ function DisableGodmode()
     if godmodeConnection then godmodeConnection:Disconnect(); godmodeConnection = nil end
 end
 
--- Rapid Fire
-function ApplyRapidFire(tool)
-    if not tool then return end
-    for _, v in ipairs(tool:GetDescendants()) do
-        if v:IsA("NumberValue") and (v.Name:lower():find("firerate") or v.Name:lower():find("cool")) then
-            v.Value = 0.01
-        end
-    end
-end
-
--- Bullet Tracer
-function DrawTracer(origin, direction)
-    if not DrawingSupported or not Settings.BulletTracer then return end
-    local ray = Ray.new(origin, direction * 500)
-    local hit, pos = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character}, false, true)
-    local endpoint = pos or origin + direction * 500
-    local line = Drawing.new("Line")
-    line.Thickness = 1
-    line.Color = Color3.fromRGB(255, 100, 0)
-    line.From = Camera:WorldToViewportPoint(origin)
-    line.To = Camera:WorldToViewportPoint(endpoint)
-    line.Visible = true
-    table.insert(tracerTable, {line = line, start = tick()})
-    task.delay(0.1, function() line:Remove() end)
-end
-
 -- Spin Bot
-local spinVel
 function ToggleSpinBot(enable)
     if enable then
         if not spinVel then
@@ -1009,7 +991,7 @@ function ToggleSpinBot(enable)
     end
 end
 
--- Fake Death (ragdoll)
+-- Fake Death
 function ToggleFakeDeath(enable)
     local char = LocalPlayer.Character
     if not char then return end
@@ -1036,74 +1018,6 @@ function ToggleFakeDeath(enable)
     end
 end
 
--- Auto Farm Kill
-function ToggleAutoFarm(enable)
-    if enable then
-        autoFarmLoop = true
-        task.spawn(function()
-            while autoFarmLoop and Settings.AutoFarmKill do
-                local target = GetClosestVisibleEnemy()
-                if target and target:FindFirstChild("Head") then
-                    local remote = FindRemote()
-                    if remote then
-                        remote:FireServer(target.Head.Position)
-                    end
-                    task.wait(0.1)
-                end
-                task.wait()
-            end
-        end)
-    else
-        autoFarmLoop = false
-    end
-end
-
--- Cam Lock
-function ToggleCamLock(enable)
-    if enable then
-        camLockLoop = true
-        task.spawn(function()
-            while camLockLoop and Settings.CamLock do
-                local target = GetClosestVisibleEnemy() or AimTarget
-                if target and target:FindFirstChild("Head") then
-                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Head.Position)
-                end
-                task.wait()
-            end
-        end)
-    else
-        camLockLoop = false
-    end
-end
-
--- Kill Aura
-function StartKillAura()
-    task.spawn(function()
-        while Settings.KillAura do
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player == LocalPlayer or not player.Character then continue end
-                local char = player.Character
-                local hum = char:FindFirstChild("Humanoid")
-                if hum and hum.Health > 0 then
-                    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                    local enemyRoot = char:FindFirstChild("HumanoidRootPart")
-                    if myRoot and enemyRoot then
-                        local dist = (myRoot.Position - enemyRoot.Position).Magnitude
-                        if dist <= Settings.KillAuraRadius and IsTargetVisible(char) then
-                            local remote = FindRemote()
-                            if remote then
-                                remote:FireServer(char.Head.Position)
-                            end
-                            task.wait(0.02)
-                        end
-                    end
-                end
-            end
-            task.wait(0.1)
-        end
-    end)
-end
-
 -- Anti-Mod
 function DetectHackers()
     local hackers = {}
@@ -1121,7 +1035,7 @@ function DetectHackers()
     if #hackers > 0 then return "Hackers: "..table.concat(hackers,", ") else return "No hackers detected" end
 end
 
--- Memory Editor (Stat Changer)
+-- Stat Changer
 function UpdateStats()
     local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
     if leaderstats then
@@ -1138,11 +1052,10 @@ function UpdateStats()
 end
 
 -- Sit on Head
-local sitTargetChar = nil
-local sitConnection = nil
 function SitOnHead(targetPlayer)
     if targetPlayer and targetPlayer.Character then
         sitTargetChar = targetPlayer.Character
+        if sitConnection then sitConnection:Disconnect() end
         sitConnection = RunService.Heartbeat:Connect(function()
             if sitTargetChar and LocalPlayer.Character then
                 local head = sitTargetChar:FindFirstChild("Head")
@@ -1159,7 +1072,23 @@ function UnSitOnHead()
     sitTargetChar = nil
 end
 
--- ===================== CẬP NHẬT ESP THÊM RAINBOW =====================
+-- Bullet Tracer (giữ nguyên nhưng thêm kiểm tra)
+function DrawTracer(origin, direction)
+    if not DrawingSupported or not Settings.BulletTracer then return end
+    local ray = Ray.new(origin, direction * 500)
+    local hit, pos = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character}, false, true)
+    local endpoint = pos or origin + direction * 500
+    local line = Drawing.new("Line")
+    line.Thickness = 1
+    line.Color = Color3.fromRGB(255, 100, 0)
+    line.From = Camera:WorldToViewportPoint(origin)
+    line.To = Camera:WorldToViewportPoint(endpoint)
+    line.Visible = true
+    table.insert(tracerTable, {line = line, start = tick()})
+    task.delay(0.1, function() line:Remove() end)
+end
+
+-- ===================== HÀM VẼ ESP (GIỮ NGUYÊN TỪ V15) =====================
 local function createDrawing(type, properties)
     if not DrawingSupported then return {Visible=false,Remove=function()end} end
     local d = Drawing.new(type)
@@ -1205,7 +1134,6 @@ function updatePlayerEsp(player, character)
     local xMin = headPos.X - (yMax - yMin)/4
     local xMax = headPos.X + (yMax - yMin)/4
 
-    -- Cầu vồng
     local color = Color3.fromHSV(rainbowHue % 1, 1, 1)
     if Settings.RainbowESP then
         if cache.box then cache.box.Color = color end
@@ -1248,7 +1176,30 @@ function updatePlayerEsp(player, character)
     end
 end
 
--- ===================== VÒNG LẶP CHÍNH =====================
+local function UpdateHighlight(player)
+    if not DrawingSupported then return end
+    local char = player.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if Settings.Wallhack and hum and hum.Health > 0 then
+        if not highlightCache[player] then
+            local hl = Instance.new("Highlight")
+            hl.Name = "Chams"
+            hl.FillColor = Color3.fromRGB(255, 100, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.3
+            hl.OutlineTransparency = 0
+            hl.Enabled = true
+            hl.Adornee = char
+            hl.Parent = char
+            highlightCache[player] = hl
+        end
+    else
+        local hl = highlightCache[player]
+        if hl then hl:Destroy(); highlightCache[player] = nil end
+    end
+end
+
+-- ===================== VÒNG LẶP CHÍNH (TỐI ƯU – GỘP TẤT CẢ) =====================
 local FOVCircle
 if DrawingSupported then
     FOVCircle = Drawing.new("Circle")
@@ -1260,17 +1211,18 @@ if DrawingSupported then
 end
 
 RunService.RenderStepped:Connect(function(dt)
-    rainbowHue = (tick() * 0.3) % 1  -- dành cho Rainbow ESP
+    -- Rainbow
+    rainbowHue = (tick() * 0.3) % 1
 
-    if DrawingSupported then
-        if FOVCircle then
-            FOVCircle.Visible = Settings.ShowFOV or Settings.Aimbot or Settings.SilentAim
-            FOVCircle.Radius = Settings.FOVSize
-            FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-            FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
-        end
+    -- FOV
+    if DrawingSupported and FOVCircle then
+        FOVCircle.Visible = Settings.ShowFOV or Settings.Aimbot or Settings.SilentAim
+        FOVCircle.Radius = Settings.FOVSize
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        FOVCircle.Color = Settings.FOVColor == "Red" and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
     end
 
+    -- Aimbot (vẫn chạy mỗi frame)
     if Settings.Aimbot then
         local target = GetClosestVisibleEnemy()
         AimTarget = target
@@ -1285,6 +1237,15 @@ RunService.RenderStepped:Connect(function(dt)
         AimTarget = nil
     end
 
+    -- Cam Lock (gộp vào đây)
+    if Settings.CamLock then
+        local target = GetClosestVisibleEnemy() or AimTarget
+        if target and target:FindFirstChild("Head") then
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Head.Position)
+        end
+    end
+
+    -- Trigger Bot
     if Settings.TriggerBot and tick() - lastTriggerTime >= 0.2 then
         lastTriggerTime = tick()
         local char = LocalPlayer.Character
@@ -1302,61 +1263,102 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- Bullet Tracer
-    if firing and Settings.BulletTracer and LocalPlayer.Character then
-        local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-        if tool then
-            local handle = tool:FindFirstChild("Handle")
-            if handle then
-                DrawTracer(handle.Position, Camera.CFrame.LookVector)
-            end
-        end
-    end
-
-    -- Anti-Mod check
-    if Settings.AntiMod then
-        warningLabel.Text = DetectHackers()
-    end
-
-    -- ESP + Wallhack
-    local activePlayers = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            activePlayers[p] = true
-            updatePlayerEsp(p, p.Character)
-            UpdateHighlight(p)
-        end
-    end
-    for plr, _ in pairs(espCache) do
-        if not activePlayers[plr] then removePlayerEsp(plr) end
-    end
-end)
-
-RunService.Heartbeat:Connect(function()
-    HandleFly()
-    if Settings.NoRecoil and firing and savedPitch then
-        local currentYaw = Camera.CFrame:toEulerAnglesYXZ()
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position) * CFrame.Angles(savedPitch, currentYaw, 0)
-    end
-    if tick() - lastWeaponCheck >= 0.5 then
-        lastWeaponCheck = tick()
-        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-        if Settings.RapidFire then ApplyRapidFire(tool) end
-        if Settings.InfAmmo and tool then
-            for _, v in ipairs(tool:GetDescendants()) do
-                if v:IsA("NumberValue") and v.Name:lower():find("ammo") then
-                    v.Value = 999
+    -- Kill Aura (cập nhật mỗi 0.1s để giảm tải)
+    if Settings.KillAura and tick() - lastKillAuraUpdate >= 0.1 then
+        lastKillAuraUpdate = tick()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player == LocalPlayer or not player.Character then continue end
+            local char = player.Character
+            local hum = char:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local enemyRoot = char:FindFirstChild("HumanoidRootPart")
+                if myRoot and enemyRoot then
+                    local dist = (myRoot.Position - enemyRoot.Position).Magnitude
+                    if dist <= Settings.KillAuraRadius and IsTargetVisible(char) then
+                        local remote = FindRemote()
+                        if remote then
+                            remote:FireServer(char.Head.Position)
+                        end
+                    end
                 end
             end
         end
     end
-    -- Godmode giữ health
+
+    -- Auto Farm (cập nhật mỗi 0.1s)
+    if Settings.AutoFarmKill and tick() - lastKillAuraUpdate >= 0.1 then
+        local target = GetClosestVisibleEnemy()
+        if target and target:FindFirstChild("Head") then
+            local remote = FindRemote()
+            if remote then
+                remote:FireServer(target.Head.Position)
+            end
+        end
+    end
+
+    -- ESP update (mỗi 0.1s để giảm tải)
+    if tick() - lastESPUpdate >= 0.1 then
+        lastESPUpdate = tick()
+        local activePlayers = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                activePlayers[p] = true
+                updatePlayerEsp(p, p.Character)
+                UpdateHighlight(p)
+            end
+        end
+        for plr, _ in pairs(espCache) do
+            if not activePlayers[plr] then removePlayerEsp(plr) end
+        end
+    end
+
+    -- Anti-Mod
+    if Settings.AntiMod then
+        warningLabel.Text = DetectHackers()
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    -- Fly
+    HandleFly()
+
+    -- No Recoil
+    if Settings.NoRecoil and firing and savedPitch then
+        local currentYaw = Camera.CFrame:toEulerAnglesYXZ()
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position) * CFrame.Angles(savedPitch, currentYaw, 0)
+    end
+
+    -- Weapon Mods (mỗi 0.5s)
+    if tick() - lastWeaponCheck >= 0.5 then
+        lastWeaponCheck = tick()
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool then
+            if Settings.RapidFire then
+                for _, v in ipairs(tool:GetDescendants()) do
+                    if v:IsA("NumberValue") and (v.Name:lower():find("firerate") or v.Name:lower():find("cool")) then
+                        v.Value = 0.01
+                    end
+                end
+            end
+            if Settings.InfAmmo then
+                for _, v in ipairs(tool:GetDescendants()) do
+                    if v:IsA("NumberValue") and v.Name:lower():find("ammo") then
+                        v.Value = 999
+                    end
+                end
+            end
+        end
+    end
+
+    -- Godmode (giữ health)
     if Settings.Godmode and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         local hum = LocalPlayer.Character.Humanoid
         if hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
     end
 end)
 
+-- Input events
 UIS.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -1368,10 +1370,10 @@ UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then firing = false end
 end)
 
+-- Character respawn
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(0.5)
     SetupSilentAim(Settings.SilentAim)
-    -- Áp dụng lại các trạng thái
     if Settings.Fly then ToggleFly(true) end
     if Settings.Noclip then ToggleNoclip(true) end
     if Settings.SpeedHack then char:WaitForChild("Humanoid",2).WalkSpeed = Settings.SpeedValue end
@@ -1383,6 +1385,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if Settings.FakeDeath then ToggleFakeDeath(true) end
 end)
 
+-- Init
 if LocalPlayer.Character then
     SetupSilentAim(Settings.SilentAim)
     if Settings.Godmode then EnableGodmode() end
@@ -1392,4 +1395,4 @@ end
 
 if Settings.AntiCheatBypass then removeAntiCheat() end
 
-print("[FPS GOD ULTIMATE v15] Đã tải tất cả tính năng – toandinh the best!")
+print("[FPS GOD ULTIMATE v16 – FIXED] Đã tải thành công! Menu sẽ hiển thị ngay.")
